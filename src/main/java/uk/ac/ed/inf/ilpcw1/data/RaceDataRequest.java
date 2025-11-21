@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 
 @Data
 @AllArgsConstructor
@@ -17,4 +19,7 @@ public class RaceDataRequest {
 
     @JsonProperty("endLocation")
     private LngLat endLocation;
+
+    @JsonProperty("LLMInput")
+    private List<RestrictedArea> llmInput;
 }

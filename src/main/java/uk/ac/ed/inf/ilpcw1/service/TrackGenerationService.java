@@ -5,12 +5,16 @@ import uk.ac.ed.inf.ilpcw1.data.GeoJsonLineString;
 import uk.ac.ed.inf.ilpcw1.data.LngLat;
 import uk.ac.ed.inf.ilpcw1.data.RestrictedArea;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 public class TrackGenerationService {
+    private static final Logger logger = LoggerFactory.getLogger(DroneQueryService.class);
 
     /**
      * Generates a "Track" (list of No-Fly Zones) based on start/end points.
@@ -48,9 +52,7 @@ public class TrackGenerationService {
     }
 
     public GeoJsonLineString convertToGeoJson(List<LngLat> vertices) {
-        if (vertices == null) {
-            return GeoJsonLineString.builder().coordinates(new ArrayList<>()).build();
-        }
+        logger.info("vertices: {}", vertices);
 
         List<List<Double>> coordinates = vertices.stream()
                 .map(p -> List.of(p.getLongitude(), p.getLatitude()))

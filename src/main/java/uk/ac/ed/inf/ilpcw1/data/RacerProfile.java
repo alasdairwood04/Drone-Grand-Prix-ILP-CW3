@@ -1,0 +1,25 @@
+package uk.ac.ed.inf.ilpcw1.data;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class RacerProfile {
+    private String name;
+    private String color;
+    private SearchStrategy strategy; // e.g., A*, Greedy, Dijkstra
+
+    // PHYSICS PROPERTIES
+    private double moveDistance;    // e.g., 0.00015 (Standard) vs 0.00030 (Fast)
+
+    // allowed flight directions (e.g., 16 standard, or just 4 for a "rook" movement)
+    private double[] flightAngles;
+
+
+    // changing heuristic weight to modify A* behavior
+    private double heuristicWeight;
+
+    @Builder.Default
+    private HeuristicType heuristicType = HeuristicType.EUCLIDEAN;
+}

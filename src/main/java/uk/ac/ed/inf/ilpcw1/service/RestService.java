@@ -40,28 +40,20 @@ public class RestService {
     }
 
 
-    /**
-     * Calculate the next geographical position based on a starting position and an angle.
-     * @param start - The starting geographical position.
-     * @param angle - The angle in degrees (0 degrees is east/positive longitude change).
-     * @return - The new geographical position after moving MOVE_LENGTH (0.00015) in the specified direction.
-     */
-    public LngLat nextPosition(LngLat start, double angle) {
+    // Overload the existing method to accept a custom move distance
+    public LngLat nextPosition(LngLat start, double angle, double moveDistance) {
         double angleInRadians = Math.toRadians(angle);
 
-        double lngChange = MOVE_LENGTH * Math.cos(angleInRadians);
-        double latChange = MOVE_LENGTH * Math.sin(angleInRadians);
+        double lngChange = moveDistance * Math.cos(angleInRadians);
+        double latChange = moveDistance * Math.sin(angleInRadians);
 
-        // Create new position
-        double newLng = start.getLongitude() + lngChange;
-        double newLat = start.getLatitude() + latChange;
-
-        return LngLat.builder()
-                .longitude(newLng)
-                .latitude(newLat)
-                .build();
+        return new LngLat(start.getLongitude() + lngChange, start.getLatitude() + latChange);
     }
 
+    // Keep the original for backward compatibility if needed, or refactor all callers
+    public LngLat nextPosition(LngLat start, double angle) {
+        return nextPosition(start, angle, 0.00015);
+    }
 
     /**
      * Check if a geographical position is inside a given region (polygon).

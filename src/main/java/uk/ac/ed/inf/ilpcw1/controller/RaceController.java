@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/race")
 public class RaceController {
 
+
+    private final GeoJsonMapper geoJsonMapper;
     private static final Logger logger = LoggerFactory.getLogger(DroneQueryService.class);
     private final TrackGenerationService trackGenerationService;
     private final RacerService racerService;
@@ -27,9 +29,11 @@ public class RaceController {
     @Autowired
     public RaceController(
             TrackGenerationService trackGenerationService,
-            RacerService racerService){
+            RacerService racerService,
+            GeoJsonMapper geoJsonMapper) {
         this.trackGenerationService = trackGenerationService;
         this.racerService = racerService;
+        this.geoJsonMapper = geoJsonMapper;
     }
 
     @PostMapping("/start")
@@ -37,5 +41,16 @@ public class RaceController {
         RaceDataResponse response = racerService.startRace(request);
         logger.info("Returning race response with ID: {}", response.getRaceId());
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/visualize")
+    public ResponseEntity<GeoJsonFeatureCollection> getRaceVisualization(@RequestBody RaceDataRequest request) {
+        // 1. Run the race logic
+        RaceDataResponse raceData = racerService.startRace(request);
+
+        // 2. Convert to standardized GeoJSON FeatureCollection
+        GeoJsonFeatureCollection geoJsonOutput = geoJsonMapper.convertRaceDataToGeoJson(raceData);
+
+        return ResponseEntity.ok(geoJsonOutput);
     }
 }

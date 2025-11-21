@@ -27,7 +27,7 @@ public class RaceDataResponse {
 
     // The LLM-generated track (obstacles)
     @JsonProperty("trackObstacles")
-    private List<RestrictedArea> trackObstacles;
+    private GeoJsonLineString trackObstacles;
 
     // The results of the drones racing on this track
     @JsonProperty("droneResults")
