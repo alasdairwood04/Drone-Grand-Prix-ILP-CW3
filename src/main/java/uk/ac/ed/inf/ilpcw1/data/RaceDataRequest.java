@@ -21,5 +21,5 @@ public class RaceDataRequest {
     private LngLat endLocation;
 
     @JsonProperty("LLMInput")
-    private List<RestrictedArea> llmInput;
+    private GeoJsonLineString llmInput;
 }

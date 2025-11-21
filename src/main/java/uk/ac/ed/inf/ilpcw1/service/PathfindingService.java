@@ -81,7 +81,7 @@ public class PathfindingService {
 
         int iterations = 0;
         // Standard limit, can be adjusted or moved to profile if needed
-        final int MAX_ITERATIONS = 250000;
+        final int MAX_ITERATIONS = 75000;
 
         List<Region> noFlyZones = restrictedAreas.stream()
                 .map(this::convertToRegion)

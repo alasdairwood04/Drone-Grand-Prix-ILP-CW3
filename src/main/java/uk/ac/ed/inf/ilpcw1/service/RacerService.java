@@ -67,10 +67,15 @@ public class RacerService {
         logger.info("Starting race from {} to {}", start, end);
 
         // 1. Get track (restricted areas) from input or generator
-        List<RestrictedArea> trackObstacles = request.getLlmInput();
+        GeoJsonLineString trackObstaclesGeo = request.getLlmInput();
+
+        List<RestrictedArea> trackObstacles = trackGenerationService.convertFromGeoJson(trackObstaclesGeo);
+
+
         if (trackObstacles == null) {
-            trackObstacles = new ArrayList<>();
+            logger.info("No LLM input provided, generating track procedurally.");
         }
+
         logger.info("Using {} obstacles", trackObstacles.size());
 
         // 2. Define the Racers (Profiles)

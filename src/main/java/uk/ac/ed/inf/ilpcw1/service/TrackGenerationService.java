@@ -68,4 +68,18 @@ public class TrackGenerationService {
                 .build();
     }
 
+    public List<RestrictedArea> convertFromGeoJson(GeoJsonLineString geoJson) {
+        List<LngLat> vertices = geoJson.getCoordinates().stream()
+                .map(coord -> new LngLat(coord.get(0), coord.get(1)))
+                .collect(Collectors.toList());
+
+        RestrictedArea area = RestrictedArea.builder()
+                .name("Converted Area")
+                .id(0) // ID can be set as needed
+                .vertices(vertices)
+                .build();
+
+        return List.of(area);
+    }
+
 }
