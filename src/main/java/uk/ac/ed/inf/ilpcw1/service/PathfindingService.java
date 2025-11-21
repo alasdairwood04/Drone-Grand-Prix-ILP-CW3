@@ -113,7 +113,10 @@ public class PathfindingService {
                 if (processed.contains(nextKey)) continue;
 
                 // No-Fly Zone Check
-                if (intersectsRestrictedArea(current.position, nextPos, noFlyZones)) continue;
+//                if (intersectsRestrictedArea(current.position, nextPos, noFlyZones)) continue;
+
+                // Allowed Regions Check (if any defined)
+                if (leavesAllowedRegions(current.position, nextPos, noFlyZones)) continue;
 
                 // Cost Calculation (1 move = cost 1, representing 1 'tick' of time)
                 double tentativeG = current.g + 1;
@@ -195,6 +198,22 @@ public class PathfindingService {
             if (restService.isInRegion(pos1, region) || restService.isInRegion(pos2, region)) {
                 return true;
             }
+            List<LngLat> vertices = region.getVertices();
+            for (int i = 0; i < vertices.size() - 1; i++) {
+                if (lineSegmentsIntersect(pos1, pos2, vertices.get(i), vertices.get(i + 1))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean leavesAllowedRegions(LngLat pos1, LngLat pos2, List<Region> allowedRegions) {
+        for (Region region : allowedRegions) {
+            if (restService.isOutsideRegion(pos1, region) || restService.isOutsideRegion(pos2, region)) {
+                return true;
+            }
+
             List<LngLat> vertices = region.getVertices();
             for (int i = 0; i < vertices.size() - 1; i++) {
                 if (lineSegmentsIntersect(pos1, pos2, vertices.get(i), vertices.get(i + 1))) {

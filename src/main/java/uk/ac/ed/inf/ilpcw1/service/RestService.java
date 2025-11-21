@@ -131,4 +131,9 @@ public class RestService {
         }
         return intersectCount;
     }
+
+
+    public boolean isOutsideRegion(LngLat position, Region region) {
+        return !isInRegion(position, region);
+    }
 }

@@ -76,7 +76,7 @@ public class RacerService {
         // 2. Define the Racers (Profiles)
         List<RacerProfile> racers = new ArrayList<>();
 
-        // 1. The "Optimal Ace" (Standard A*)
+        // 1. (Standard A*)
         racers.add(RacerProfile.builder()
                 .name("Optimal Ace")
                 .color("#00FF00") // Green
@@ -87,7 +87,7 @@ public class RacerService {
                 .heuristicWeight(1.0)
                 .build());
 
-        // 2. "The Muscle" (Weighted A* + High Speed)
+        // 2. (Weighted A* + High Speed)
         racers.add(RacerProfile.builder()
                 .name("The Muscle")
                 .color("#0000FF") // Blue
@@ -97,7 +97,7 @@ public class RacerService {
                 .heuristicWeight(2.5) // Weighted Heuristic for speed over optimality
                 .build());
 
-        // 3. "Swift Seeker" (Greedy)
+        // 3. (Greedy)
         racers.add(RacerProfile.builder()
                 .name("Swift Seeker")
                 .color("#FF0000") // Red
@@ -107,7 +107,7 @@ public class RacerService {
                 .heuristicWeight(1.5)
                 .build());
 
-        // 4. "Cautious Cruiser" (Dijkstra)
+        // 4. (Dijkstra)
         racers.add(RacerProfile.builder()
                 .name("Cautious Cruiser")
                 .color("#00FFFF") // Cyan
@@ -119,7 +119,6 @@ public class RacerService {
                 .build());
 
         // Uses Manhattan distance. It might prefer staying on "grid lines" (cardinal directions)
-        // creating a very robotic, zig-zagging flight path compared to the smooth Ace.
         racers.add(RacerProfile.builder()
                 .name("The Taxi Driver")
                 .color("#FFFF00") // Yellow
@@ -129,7 +128,6 @@ public class RacerService {
                 .flightAngles(new double[]{0, 90, 180, 270}) // Only 4 directions!
                 .build());
 
-        // "The King"
         // Uses Chebyshev distance. It loves diagonals.
         racers.add(RacerProfile.builder()
                 .name("The King")
