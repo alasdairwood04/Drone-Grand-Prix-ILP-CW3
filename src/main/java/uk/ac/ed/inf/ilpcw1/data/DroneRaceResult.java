@@ -30,4 +30,7 @@ public class DroneRaceResult {
 
     @JsonProperty("color")
     private String color; // Hex code for frontend visualization (e.g., "#FF0000")
+
+    @JsonProperty("travelTime")
+    private Double travelTime; // Simulation time (e.g. moves)
 }

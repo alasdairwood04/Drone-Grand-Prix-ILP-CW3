@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>uk.ac.ed.inf</groupId>
-	<artifactId>ilp_submission_image</artifactId>
+	<artifactId>Drone-Grand-Prix-ILP-CW3</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>ilp_submission_image</name>
 	<description>ilp_submission_image</description>
