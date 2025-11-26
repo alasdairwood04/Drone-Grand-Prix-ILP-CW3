@@ -1225,4 +1225,111 @@ public class DroneQueryService {
                 .build();
 
     }
+
+    /**
+     * Generates a comprehensive GeoJSON FeatureCollection visualizing:
+     * 1. All Restricted Areas (Polygons)
+     * 2. All Calculated Drone Paths (LineStrings), color-coded by drone.
+     *
+     * Use this output in http://geojson.io to visualize the complete scenario.
+     */
+    public Map<String, Object> calcMultipleFlightPathsAsGeoJson(List<MedDispatchRec> dispatches) {
+        logger.info("Generating full scenario GeoJSON for {} dispatches...", dispatches.size());
+
+        // 1. Calculate the optimized paths using your existing logic
+        // This handles the splitting of orders between multiple drones
+        DeliveryPathResponse response = calcDeliveryPath(dispatches);
+
+        // 2. Fetch context data (No-Fly Zones) to draw on the map
+        List<RestrictedArea> restrictedAreas = ilpServiceClient.getRestrictedAreas();
+
+        List<Map<String, Object>> features = new ArrayList<>();
+
+        // --- Part A: Add Restricted Areas as Polygons ---
+        for (RestrictedArea area : restrictedAreas) {
+            Map<String, Object> feature = new LinkedHashMap<>();
+            feature.put("type", "Feature");
+
+            // Properties for popup info
+            Map<String, Object> properties = new LinkedHashMap<>();
+            properties.put("name", area.getName());
+            properties.put("type", "Restricted Area");
+            properties.put("fill", "#ff0000"); // Red fill
+            properties.put("fill-opacity", 0.3);
+            properties.put("stroke", "#ff0000");
+            feature.put("properties", properties);
+
+            // Geometry
+            Map<String, Object> geometry = new LinkedHashMap<>();
+            geometry.put("type", "Polygon");
+
+            // Convert LngLat list to [[lng, lat], [lng, lat]...]
+            List<List<Double>> ring = new ArrayList<>();
+            for (LngLat vertex : area.getVertices()) {
+                ring.add(List.of(vertex.getLongitude(), vertex.getLatitude()));
+            }
+            // GeoJSON Polygons are a list of rings (outer + holes), so we wrap it once more
+            geometry.put("coordinates", List.of(ring));
+
+            feature.put("geometry", geometry);
+            features.add(feature);
+        }
+
+        // --- Part B: Add Drone Paths as LineStrings ---
+        // Color palette to distinguish different drones
+        String[] colors = {
+                "#0000FF", // Blue
+                "#008000", // Green
+                "#800080", // Purple
+                "#FFA500", // Orange
+                "#00FFFF", // Cyan
+                "#FF00FF"  // Magenta
+        };
+        int colorIndex = 0;
+
+        for (DronePathDetails dronePath : response.getDronePaths()) {
+            String color = colors[colorIndex % colors.length];
+            colorIndex++;
+
+            Map<String, Object> feature = new LinkedHashMap<>();
+            feature.put("type", "Feature");
+
+            // Properties
+            Map<String, Object> properties = new LinkedHashMap<>();
+            properties.put("droneId", dronePath.getDroneId());
+            properties.put("type", "Flight Path");
+            properties.put("stroke", color);
+            properties.put("stroke-width", 3);
+            feature.put("properties", properties);
+
+            // Geometry
+            Map<String, Object> geometry = new LinkedHashMap<>();
+            geometry.put("type", "LineString");
+
+            // Flatten all deliveries into one continuous line of coordinates
+            List<List<Double>> coordinates = new ArrayList<>();
+
+            if (dronePath.getDeliveries() != null) {
+                for (Deliveries delivery : dronePath.getDeliveries()) {
+                    if (delivery.getFlightPath() != null) {
+                        for (LngLat point : delivery.getFlightPath()) {
+                            coordinates.add(List.of(point.getLongitude(), point.getLatitude()));
+                        }
+                    }
+                }
+            }
+
+            geometry.put("coordinates", coordinates);
+            feature.put("geometry", geometry);
+            features.add(feature);
+        }
+
+        // 3. Construct Final FeatureCollection
+        Map<String, Object> featureCollection = new LinkedHashMap<>();
+        featureCollection.put("type", "FeatureCollection");
+        featureCollection.put("features", features);
+
+        return featureCollection;
+    }
+
 }

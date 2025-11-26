@@ -16,7 +16,7 @@ import java.util.*;
 public class PathfindingService {
     private static final Logger logger = LoggerFactory.getLogger(PathfindingService.class);
 
-    // Default constants for backward compatibility or fallback
+    // Default constants for backward compatibility
     private static final double DEFAULT_MOVE_DISTANCE = 0.00015;
     private static final double[] DEFAULT_COMPASS_DIRECTIONS = {
             0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5,
@@ -32,65 +32,77 @@ public class PathfindingService {
 
     /**
      * Backward compatibility method.
-     * Creates a default "Standard Drone" profile using A* and standard movement.
      */
-    public List<LngLat> findPath(LngLat start, LngLat goal, List<RestrictedArea> restrictedAreas) {
-        // Create a default profile for legacy calls
+    public List<LngLat> findPath(LngLat start, LngLat goal, List<RestrictedArea> allowedAreas) {
         RacerProfile defaultProfile = RacerProfile.builder()
                 .name("Standard Drone")
                 .strategy(SearchStrategy.ASTAR)
                 .moveDistance(DEFAULT_MOVE_DISTANCE)
                 .flightAngles(DEFAULT_COMPASS_DIRECTIONS)
                 .heuristicWeight(1.0)
+                .heuristicType(HeuristicType.EUCLIDEAN)
                 .build();
 
-        return findPath(start, goal, restrictedAreas, defaultProfile);
+        return findPath(start, goal, allowedAreas, defaultProfile);
     }
 
     /**
-     * Find a path from start to goal avoiding restricted areas using a specific racer profile.
+     * Find a path from start to goal ensuring the drone stays WITHIN the allowed areas.
+     * Updated to use CoordinateKey and optimized loop from CW2.
      *
      * @param start           Starting position
      * @param goal            Goal position
-     * @param restrictedAreas Areas to avoid
+     * @param allowedAreas    Areas the drone MUST stay inside (Boundaries)
      * @param profile         Racer configuration (strategy, speed, agility, weight)
      * @return List of positions forming the path (including start, excluding goal)
      */
-    public List<LngLat> findPath(LngLat start, LngLat goal, List<RestrictedArea> restrictedAreas, RacerProfile profile) {
+    public List<LngLat> findPath(LngLat start, LngLat goal, List<RestrictedArea> allowedAreas, RacerProfile profile) {
         logger.info("Finding path from {} to {} using profile: {}", start, goal, profile.getName());
 
         if (restService.isCloseTo(start, goal)) {
             return new ArrayList<>(List.of(start));
         }
 
-        // Priority queue ordered by f-score (lowest score = highest priority)
+        // Priority queue ordered by f-score
         PriorityQueue<Node> priorityQueue = new PriorityQueue<>(Comparator.comparingDouble(n -> n.f));
-        Map<String, Node> allNodes = new HashMap<>();
-        Set<String> processed = new HashSet<>();
+
+        // Use CoordinateKey for efficient and precise position lookups
+        Map<CoordinateKey, Node> allNodes = new HashMap<>();
 
         // Initialize start node
         double startG = 0;
-        // Heuristic depends on the specific drone's move distance (speed)
         double startH = heuristic(start, goal, profile);
         double startF = calculateScore(startG, startH, profile);
 
         Node startNode = new Node(start, null, startG, startH, startF);
+        CoordinateKey startKey = CoordinateKey.fromLngLat(start);
 
         priorityQueue.add(startNode);
-        allNodes.put(positionKey(start), startNode);
+        allNodes.put(startKey, startNode);
 
         int iterations = 0;
-        // Standard limit, can be adjusted or moved to profile if needed
-        final int MAX_ITERATIONS = 75000;
+        final int MAX_ITERATIONS = 150000;
 
-        List<Region> noFlyZones = restrictedAreas.stream()
+        // Convert RestrictedAreas to Regions once for efficiency
+        List<Region> boundaryRegions = allowedAreas.stream()
                 .map(this::convertToRegion)
                 .toList();
 
-        while (!priorityQueue.isEmpty() && iterations < MAX_ITERATIONS) {
+        while (!priorityQueue.isEmpty()) {
             iterations++;
+            if (iterations > MAX_ITERATIONS) {
+                logger.warn("{} failed to find path after {} iterations (Max Reached)", profile.getName(), iterations);
+                return null;
+            }
+
             Node current = priorityQueue.poll();
-            String currentKey = positionKey(current.position);
+            CoordinateKey currentKey = CoordinateKey.fromLngLat(current.position);
+
+            // Lazy Deletion: If we found a better path to this node while it was waiting, skip it.
+            Node bestKnown = allNodes.get(currentKey);
+            if (bestKnown != null && bestKnown.g < current.g) {
+                continue;
+            }
 
             // Goal Check
             if (restService.isCloseTo(current.position, goal)) {
@@ -99,87 +111,85 @@ public class PathfindingService {
                 return reconstructPath(current);
             }
 
-            if (processed.contains(currentKey)) {
-                continue;
-            }
-            processed.add(currentKey);
-
             // Explore Neighbors using DRONE-SPECIFIC flight angles
             for (double angle : profile.getFlightAngles()) {
                 // Use DRONE-SPECIFIC move distance (speed)
                 LngLat nextPos = restService.nextPosition(current.position, angle, profile.getMoveDistance());
-                String nextKey = positionKey(nextPos);
+                CoordinateKey nextKey = CoordinateKey.fromLngLat(nextPos);
 
-                if (processed.contains(nextKey)) continue;
+                // BOUNDARY CHECK: Ensure we DO NOT leave the allowed region
+                if (leavesAllowedRegions(current.position, nextPos, boundaryRegions)) {
+                    continue;
+                }
 
-                // No-Fly Zone Check
-//                if (intersectsRestrictedArea(current.position, nextPos, noFlyZones)) continue;
-
-                // Allowed Regions Check (if any defined)
-                if (leavesAllowedRegions(current.position, nextPos, noFlyZones)) continue;
-
-                // Cost Calculation (1 move = cost 1, representing 1 'tick' of time)
+                // Cost Calculation (1 move = cost 1)
                 double tentativeG = current.g + 1;
+                Node existingNode = allNodes.get(nextKey);
 
-                Node nextNode = allNodes.get(nextKey);
-
-                // A* logic: If we found a cheaper path to this neighbor (or haven't seen it yet)
-                if (nextNode == null || tentativeG < nextNode.g) {
+                // If we found a cheaper path to this neighbor (or haven't seen it yet)
+                if (existingNode == null || tentativeG < existingNode.g) {
                     double h = heuristic(nextPos, goal, profile);
                     double f = calculateScore(tentativeG, h, profile);
 
-                    if (nextNode == null) {
-                        nextNode = new Node(nextPos, current, tentativeG, h, f);
-                        allNodes.put(nextKey, nextNode);
-                    } else {
-                        nextNode.parent = current;
-                        nextNode.g = tentativeG;
-                        nextNode.f = f; // Update priority
-                    }
+                    // Create NEW node to avoid corrupting the PriorityQueue
+                    Node newNode = new Node(nextPos, current, tentativeG, h, f);
 
-                    // Re-adding to queue ensures the node is re-evaluated with new priority
-                    priorityQueue.add(nextNode);
+                    allNodes.put(nextKey, newNode);
+                    priorityQueue.add(newNode);
                 }
             }
         }
 
-        logger.warn("{} failed to find path after {} iterations", profile.getName(), iterations);
+        logger.warn("{} failed to find path - Priority Queue exhausted after {} iterations", profile.getName(), iterations);
         return null;
     }
 
     /**
-     * Calculates the priority score (f) based on the racer profile strategy and weight.
+     * Checks if the move from pos1 to pos2 exits any of the allowed regions.
+     * Returns TRUE if the move is INVALID (i.e., it leaves the region).
      */
+    private boolean leavesAllowedRegions(LngLat pos1, LngLat pos2, List<Region> allowedRegions) {
+        for (Region region : allowedRegions) {
+            // Check if points are spatially outside the region
+            if (restService.isOutsideRegion(pos1, region) || restService.isOutsideRegion(pos2, region)) {
+                return true; // We are outside the allowed boundary
+            }
+
+            // Check if the path line crosses a boundary edge (prevents skipping over corners)
+            List<LngLat> vertices = region.getVertices();
+            for (int i = 0; i < vertices.size() - 1; i++) {
+                if (lineSegmentsIntersect(pos1, pos2, vertices.get(i), vertices.get(i + 1))) {
+                    return true; // Crossed a boundary line
+                }
+            }
+            // Check closing edge
+            if (!vertices.isEmpty() && lineSegmentsIntersect(pos1, pos2, vertices.get(vertices.size() - 1), vertices.get(0))) {
+                return true; // Crossed the closing boundary line
+            }
+        }
+        return false;
+    }
+
     private double calculateScore(double g, double h, RacerProfile profile) {
         return switch (profile.getStrategy()) {
             case ASTAR -> g + h;
-            case GREEDY -> h; // Pure heuristic
-            case DIJKSTRA -> g; // Only cost so far
-            case WEIGHTED_ASTAR -> g + (h * profile.getHeuristicWeight()); // Weighted heuristic
+            case GREEDY -> h;
+            case DIJKSTRA -> g;
+            case WEIGHTED_ASTAR -> g + (h * profile.getHeuristicWeight());
             default -> g + h;
         };
     }
 
-    /**
-     * Estimates the minimum steps remaining to reach the goal.
-     * Must account for the specific drone's speed (moveDistance).
-     */
     private double heuristic(LngLat current, LngLat goal, RacerProfile profile) {
         double dx = Math.abs(current.getLongitude() - goal.getLongitude());
         double dy = Math.abs(current.getLatitude() - goal.getLatitude());
         double moveDist = profile.getMoveDistance();
 
-        // We divide by moveDist to convert "degrees" into "steps" (approximate g-score units)
         return switch (profile.getHeuristicType()) {
             case MANHATTAN -> (dx + dy) / moveDist;
-
             case CHEBYSHEV -> Math.max(dx, dy) / moveDist;
-
-            case EUCLIDEAN -> Math.sqrt(dx * dx + dy * dy) / moveDist;
+            case EUCLIDEAN -> restService.calculateDistance(current, goal) / moveDist;
         };
-    }
-    private String positionKey(LngLat pos) {
-        return String.format("%.8f,%.8f", pos.getLongitude(), pos.getLatitude());
     }
 
     private List<LngLat> reconstructPath(Node goalNode) {
@@ -191,37 +201,6 @@ public class PathfindingService {
         }
         Collections.reverse(path);
         return path;
-    }
-
-    private boolean intersectsRestrictedArea(LngLat pos1, LngLat pos2, List<Region> noFlyZones) {
-        for (Region region : noFlyZones) {
-            if (restService.isInRegion(pos1, region) || restService.isInRegion(pos2, region)) {
-                return true;
-            }
-            List<LngLat> vertices = region.getVertices();
-            for (int i = 0; i < vertices.size() - 1; i++) {
-                if (lineSegmentsIntersect(pos1, pos2, vertices.get(i), vertices.get(i + 1))) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean leavesAllowedRegions(LngLat pos1, LngLat pos2, List<Region> allowedRegions) {
-        for (Region region : allowedRegions) {
-            if (restService.isOutsideRegion(pos1, region) || restService.isOutsideRegion(pos2, region)) {
-                return true;
-            }
-
-            List<LngLat> vertices = region.getVertices();
-            for (int i = 0; i < vertices.size() - 1; i++) {
-                if (lineSegmentsIntersect(pos1, pos2, vertices.get(i), vertices.get(i + 1))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private Region convertToRegion(RestrictedArea area) {
@@ -236,7 +215,9 @@ public class PathfindingService {
         double d2 = direction(p3, p4, p2);
         double d3 = direction(p1, p2, p3);
         double d4 = direction(p1, p2, p4);
-        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+                ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
     }
 
     private double direction(LngLat p1, LngLat p2, LngLat p3) {

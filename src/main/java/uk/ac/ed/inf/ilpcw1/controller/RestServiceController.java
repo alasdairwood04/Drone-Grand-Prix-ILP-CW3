@@ -9,6 +9,7 @@ import uk.ac.ed.inf.ilpcw1.service.RestService;
 import uk.ac.ed.inf.ilpcw1.service.ValidationService;
 
 import java.util.List;
+import java.util.Map;
 
 
 @RestController
@@ -176,6 +177,16 @@ public class RestServiceController {
         }
 
         GeoJsonLineString response = droneQueryService.calcDeliveryPathAsGeoJson(medDispatchRecs);
-        return ResponseEntity.ok(response);    }
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/calcMultipleDeliveryPathAsGeoJson")
+    public ResponseEntity<Map<String, Object>> calcMultipleDeliveryPathAsGeoJson(@RequestBody List<MedDispatchRec> medDispatchRecs) {
+        if (medDispatchRecs == null || medDispatchRecs.isEmpty()) {
+            throw new uk.ac.ed.inf.ilpcw1.exception.InvalidRequestException("Dispatch list cannot be empty");
+        }
+        // Return raw Map which Spring will serialize to JSON automatically
+        return ResponseEntity.ok(droneQueryService.calcMultipleFlightPathsAsGeoJson(medDispatchRecs));
+    }
 
 }

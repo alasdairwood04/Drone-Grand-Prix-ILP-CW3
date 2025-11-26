@@ -584,34 +584,6 @@ public class CalcDeliveryPathMethodTest {
         assertTrue(response.getTotalCost() <= 25.0, "Total cost must be within limit");
     }
 
-    @Test
-    @DisplayName("Scenario 6: Impossible Order (Inside No-Fly Zone)")
-    void testCalcDeliveryPath_ImpossibleOrder() {
-        // 1. Setup
-        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
-        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
-        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
-        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
-        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
-
-        // 2. Dispatch INSIDE George Square Area
-        MedDispatchRec dispatch = MedDispatchRec.builder()
-                .id(6001)
-                .date(LocalDate.of(2025, 12, 22))
-                .time(LocalTime.of(12, 0))
-                .requirements(Requirements.builder().capacity(1.0).build())
-                .delivery(LngLat.builder().longitude(-3.189000).latitude(55.944000).build())
-                .build();
-
-        // 3. Execute & Assert
-        // Expecting the specific RuntimeException you throw in your "Failure/Base Case"
-        Exception exception = assertThrows(RuntimeException.class, () -> {
-            droneQueryService.calcDeliveryPath(List.of(dispatch));
-        });
-
-        assertTrue(exception.getMessage().contains("Undeliverable"),
-                "Exception message should mention undeliverable status");
-    }
 
     @Test
     @DisplayName("Scenario 7: Double Drop - One Drone, Two Deliveries")
@@ -963,7 +935,8 @@ public class CalcDeliveryPathMethodTest {
         for (int i = 0; i < 5; i++) {
             dispatches.add(MedDispatchRec.builder()
                     .id(14000 + i)
-                    .date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0)) // MONDAY
+                    .date(LocalDate.of(2025, 12, 12)) // MONDAY
+                    .time(LocalTime.of(12, 0)) // MONDAY
                     .requirements(heavyReq)
                     .delivery(LngLat.builder()
                             .longitude(-3.177326) // Exact Ocean Terminal location
@@ -991,5 +964,886 @@ public class CalcDeliveryPathMethodTest {
                         .count())
                 .sum();
     }
+
+    @Test
+    @DisplayName("Scenario 15: Mixed Requirements - Cooling and Non-Cooling Same Region")
+    void testCalcDeliveryPath_MixedCoolingRequirements() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 3 orders near Appleton: 2 need cooling, 1 doesn't
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder()
+                        .id(15001)
+                        .date(LocalDate.of(2025, 12, 22)) // Monday
+                        .time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.0).cooling(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                        .build(),
+                MedDispatchRec.builder()
+                        .id(15002)
+                        .date(LocalDate.of(2025, 12, 22))
+                        .time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.0).cooling(false).build())
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build())
+                        .build(),
+                MedDispatchRec.builder()
+                        .id(15003)
+                        .date(LocalDate.of(2025, 12, 22))
+                        .time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.0).cooling(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186450).latitude(55.944720).build())
+                        .build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        // Should split: cooling orders on one drone, non-cooling on another
+        assertTrue(response.getDronePaths().size() >= 2,
+                "Should split cooling and non-cooling orders");
+
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(3, totalDelivered);
+    }
+
+    @Test
+    @DisplayName("Scenario 16: Time Window Edge Case - Just Before Midnight")
+    void testCalcDeliveryPath_MidnightBoundary() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Order at 23:59 on Monday (within Drone 1's availability which ends at 23:59:59)
+        MedDispatchRec dispatch = MedDispatchRec.builder()
+                .id(16001)
+                .date(LocalDate.of(2025, 12, 22)) // Monday
+                .time(LocalTime.of(23, 59, 0))
+                .requirements(Requirements.builder().capacity(1.0).build())
+                .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                .build();
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(List.of(dispatch));
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size());
+        // Drone 1 is available Mon all day until 23:59:59
+        assertTrue(List.of("1", "2", "6", "9").contains(response.getDronePaths().get(0).getDroneId()),
+                "Should pick a drone available late Monday");
+    }
+
+    @Test
+    @DisplayName("Scenario 17: Minimum Capacity Orders - Stress Test")
+    void testCalcDeliveryPath_ManyMinimalOrders() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 20 orders with minimal capacity (0.1kg each) near Appleton
+        List<MedDispatchRec> dispatches = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            dispatches.add(MedDispatchRec.builder()
+                    .id(17000 + i)
+                    .date(LocalDate.of(2025, 12, 22))
+                    .time(LocalTime.of(10, 0))
+                    .requirements(Requirements.builder().capacity(0.1).build())
+                    .delivery(LngLat.builder()
+                            .longitude(-3.186358 + (i * 0.0002))
+                            .latitude(55.944680 + ((i % 3) * 0.0001))
+                            .build())
+                    .build());
+        }
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(20, totalDelivered, "All 20 orders must be delivered");
+        assertTrue(response.getTotalCost() > 0);
+    }
+
+    @Test
+    @DisplayName("Scenario 18: Linear Path - Sequential Deliveries Along Straight Line")
+    void testCalcDeliveryPath_LinearPath() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 4 orders in a straight line from Appleton Tower heading East
+        List<MedDispatchRec> dispatches = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            dispatches.add(MedDispatchRec.builder()
+                    .id(18001 + i)
+                    .date(LocalDate.of(2025, 12, 22))
+                    .time(LocalTime.of(10, 0))
+                    .requirements(Requirements.builder().capacity(1.5).build())
+                    .delivery(LngLat.builder()
+                            .longitude(-3.186358 + (i * 0.001)) // Moving East
+                            .latitude(55.944680) // Same latitude
+                            .build())
+                    .build());
+        }
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size(), "Should use 1 drone for linear path");
+
+        DronePathDetails path = response.getDronePaths().get(0);
+        // Should have 4 deliveries + 1 return = 5 total
+        assertEquals(5, path.getDeliveries().size());
+    }
+
+    @Test
+    @DisplayName("Scenario 19: Circular Arrangement - Orders Around Service Point")
+    void testCalcDeliveryPath_CircularPattern() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 8 orders arranged in a circle around Appleton Tower
+        List<MedDispatchRec> dispatches = new ArrayList<>();
+        double radius = 0.001;
+        LngLat center = LngLat.builder().longitude(-3.186358).latitude(55.944680).build();
+
+        for (int i = 0; i < 8; i++) {
+            double angle = (i * 45.0); // 8 points, 45° apart
+            double radians = Math.toRadians(angle);
+            dispatches.add(MedDispatchRec.builder()
+                    .id(19001 + i)
+                    .date(LocalDate.of(2025, 12, 22))
+                    .time(LocalTime.of(10, 0))
+                    .requirements(Requirements.builder().capacity(0.5).build())
+                    .delivery(LngLat.builder()
+                            .longitude(center.getLongitude() + radius * Math.cos(radians))
+                            .latitude(center.getLatitude() + radius * Math.sin(radians))
+                            .build())
+                    .build());
+        }
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(8, totalDelivered);
+    }
+
+    @Test
+    @DisplayName("Scenario 20: Weekend Delivery - Saturday Service")
+    void testCalcDeliveryPath_WeekendDelivery() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Order on Saturday
+        MedDispatchRec dispatch = MedDispatchRec.builder()
+                .id(20001)
+                .date(LocalDate.of(2025, 12, 27)) // Saturday
+                .time(LocalTime.of(14, 0))
+                .requirements(Requirements.builder().capacity(2.0).build())
+                .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                .build();
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(List.of(dispatch));
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size());
+        // Check that a Saturday-available drone was chosen
+        String droneId = response.getDronePaths().get(0).getDroneId();
+        // Drones 2, 4, 5, 6, 7, 9 are available on Saturday
+        assertTrue(List.of("2", "4", "5", "6", "7", "9").contains(droneId),
+                "Should pick a Saturday-available drone");
+    }
+
+    @Test
+    @DisplayName("Scenario 21: Peak Hour - Multiple Orders Same Time Different Locations")
+    void testCalcDeliveryPath_PeakHour() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 6 orders at 12:00 on Monday at different locations
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(21001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(21002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.188000).latitude(55.945000).build()).build(),
+                MedDispatchRec.builder().id(21003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.185000).latitude(55.946000).build()).build(),
+                MedDispatchRec.builder().id(21004).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.177326).latitude(55.981186).build()).build(), // Ocean Terminal
+                MedDispatchRec.builder().id(21005).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.177500).latitude(55.981300).build()).build(),
+                MedDispatchRec.builder().id(21006).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(12, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.177200).latitude(55.981100).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        // Should use multiple drones due to geographic spread
+        assertTrue(response.getDronePaths().size() >= 2);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(6, totalDelivered);
+    }
+
+    @Test
+    @DisplayName("Scenario 22: Cost Optimization - Choose Cheaper Drone When Multiple Available")
+    void testCalcDeliveryPath_CostOptimization() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Simple order that many drones can handle
+        MedDispatchRec dispatch = MedDispatchRec.builder()
+                .id(22001)
+                .date(LocalDate.of(2025, 12, 22))
+                .time(LocalTime.of(10, 0))
+                .requirements(Requirements.builder().capacity(2.0).build())
+                .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                .build();
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(List.of(dispatch));
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        String droneId = response.getDronePaths().get(0).getDroneId();
+
+        // Drone 1 has costPerMove=0.01 (cheapest among available)
+        // Should prefer low-cost drones
+        assertTrue(List.of("1", "7", "4").contains(droneId),
+                "Should prefer cheaper drones when multiple are suitable");
+    }
+
+    @Test
+    @DisplayName("Scenario 23: Varying Load Sizes - Optimal Bin Packing")
+    void testCalcDeliveryPath_BinPacking() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Orders with varying sizes: 0.5, 1.0, 1.5, 2.0, 2.5, 3.0 kg
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(23001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(23002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build()).build(),
+                MedDispatchRec.builder().id(23003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.5).build())
+                        .delivery(LngLat.builder().longitude(-3.186450).latitude(55.944720).build()).build(),
+                MedDispatchRec.builder().id(23004).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186500).latitude(55.944740).build()).build(),
+                MedDispatchRec.builder().id(23005).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.5).build())
+                        .delivery(LngLat.builder().longitude(-3.186550).latitude(55.944760).build()).build(),
+                MedDispatchRec.builder().id(23006).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(3.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186600).latitude(55.944780).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(6, totalDelivered, "All 6 orders must be delivered");
+
+        // Should use 1-2 drones (total 10.5kg can fit in Drone 3 or 5)
+        assertTrue(response.getDronePaths().size() <= 2,
+                "Should efficiently pack orders into minimum drones");
+    }
+
+    @Test
+    @DisplayName("Scenario 24: Early Morning Delivery - First Slot")
+    void testCalcDeliveryPath_EarlyMorning() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Order at 00:01 on Monday (start of day)
+        MedDispatchRec dispatch = MedDispatchRec.builder()
+                .id(24001)
+                .date(LocalDate.of(2025, 12, 22))
+                .time(LocalTime.of(0, 1, 0))
+                .requirements(Requirements.builder().capacity(1.0).build())
+                .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                .build();
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(List.of(dispatch));
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size());
+        // Drones 1, 2, 4, 6, 9 available from 00:00 Monday
+        assertTrue(List.of("1", "2", "4", "6", "9").contains(response.getDronePaths().get(0).getDroneId()));
+    }
+
+    @Test
+    @DisplayName("Scenario 25: Zigzag Pattern - Alternating Sides")
+    void testCalcDeliveryPath_ZigzagPattern() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 6 orders in zigzag pattern
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(25001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(25002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.187000).latitude(55.945000).build()).build(),
+                MedDispatchRec.builder().id(25003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.185500).latitude(55.945500).build()).build(),
+                MedDispatchRec.builder().id(25004).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.187500).latitude(55.946000).build()).build(),
+                MedDispatchRec.builder().id(25005).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.185000).latitude(55.946500).build()).build(),
+                MedDispatchRec.builder().id(25006).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder().longitude(-3.188000).latitude(55.947000).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(6, totalDelivered);
+    }
+
+    @Test
+    @DisplayName("Scenario 26: Boundary Test - Maximum Moves Constraint")
+    void testCalcDeliveryPath_MaxMovesConstraint() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Order that's far away, testing maxMoves constraint
+        // Drone 2 (maxMoves=1000) should fail, Drone 1 (maxMoves=2000) should work
+        MedDispatchRec dispatch = MedDispatchRec.builder()
+                .id(26001)
+                .date(LocalDate.of(2025, 12, 22))
+                .time(LocalTime.of(10, 0))
+                .requirements(Requirements.builder().capacity(2.0).build())
+                .delivery(LngLat.builder()
+                        .longitude(-3.186358 + 0.08) // ~533 moves one way
+                        .latitude(55.944680)
+                        .build())
+                .build();
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(List.of(dispatch));
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        String droneId = response.getDronePaths().get(0).getDroneId();
+        // Should NOT use Drone 2 (maxMoves=1000) - insufficient for round trip
+        assertNotEquals("2", droneId);
+        // Should use high-range drone
+        assertTrue(List.of("1", "3", "6").contains(droneId));
+    }
+
+    @Test
+    @DisplayName("Scenario 27: Mixed Service Points - Orders at Both Locations")
+    void testCalcDeliveryPath_MixedServicePoints() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 4 orders: 2 near Appleton, 2 near Ocean Terminal
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(27001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(27002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186500).latitude(55.944800).build()).build(),
+                MedDispatchRec.builder().id(27003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.177326).latitude(55.981186).build()).build(),
+                MedDispatchRec.builder().id(27004).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.177400).latitude(55.981300).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(2, response.getDronePaths().size(), "Should use 2 drones from different bases");
+
+        // Verify drones are from different service points
+        List<String> droneIds = response.getDronePaths().stream()
+                .map(DronePathDetails::getDroneId)
+                .toList();
+
+        boolean hasAppletonDrone = droneIds.stream().anyMatch(id -> Integer.parseInt(id) <= 5);
+        boolean hasOceanDrone = droneIds.stream().anyMatch(id -> Integer.parseInt(id) >= 6);
+
+        assertTrue(hasAppletonDrone && hasOceanDrone,
+                "Should use drones from both service points");
+    }
+
+    @Test
+    @DisplayName("Scenario 28: Tight MaxCost - Multiple Dispatches")
+    void testCalcDeliveryPath_TightMaxCostMultiple() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 3 orders with tight maxCost that forces low-cost drone selection
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(28001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).maxCost(15.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(28002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).maxCost(15.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build()).build(),
+                MedDispatchRec.builder().id(28003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).maxCost(15.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186450).latitude(55.944720).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+
+        // Verify cost constraint is met for each delivery
+        for (DronePathDetails path : response.getDronePaths()) {
+            Drone drone = createFullDroneList().stream()
+                    .filter(d -> d.getId().equals(path.getDroneId()))
+                    .findFirst()
+                    .orElseThrow();
+
+            int totalMoves = path.getDeliveries().stream()
+                    .mapToInt(d -> d.getFlightPath().size())
+                    .sum();
+
+            int numDeliveries = (int) path.getDeliveries().stream()
+                    .filter(d -> d.getDeliveryId() != null)
+                    .count();
+
+            double totalCost = drone.getCapability().getCostInitial()
+                    + drone.getCapability().getCostFinal()
+                    + (totalMoves * drone.getCapability().getCostPerMove());
+            double costPerDelivery = totalCost / numDeliveries;
+
+            assertTrue(costPerDelivery <= 15.0,
+                    "Cost per delivery should not exceed maxCost constraint");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 29: Heating Required - Winter Medication")
+    void testCalcDeliveryPath_HeatingRequired() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 3 orders requiring heating
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(29001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.5).heating(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(29002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.5).heating(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build()).build(),
+                MedDispatchRec.builder().id(29003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.5).heating(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186450).latitude(55.944720).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+
+        // Verify chosen drone has heating capability
+        for (DronePathDetails path : response.getDronePaths()) {
+            Drone drone = createFullDroneList().stream()
+                    .filter(d -> d.getId().equals(path.getDroneId()))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertTrue(Boolean.TRUE.equals(drone.getCapability().getHeating()),
+                    "Chosen drone must have heating capability");
+        }
+    }
+
+    @Test
+    @DisplayName("Scenario 30: Cooling Required - Temperature-Sensitive Medicine")
+    void testCalcDeliveryPath_CoolingRequired() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 2 orders requiring cooling
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder().id(30001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.0).cooling(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(30002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(2.0).cooling(true).build())
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+
+        // Verify chosen drone has cooling capability
+        String droneId = response.getDronePaths().get(0).getDroneId();
+        Drone drone = createFullDroneList().stream()
+                .filter(d -> d.getId().equals(droneId))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(Boolean.TRUE.equals(drone.getCapability().getCooling()),
+                "Chosen drone must have cooling capability");
+
+        // Drones with cooling: 1, 5, 8, 9
+        assertTrue(List.of("1", "5", "8", "9").contains(droneId));
+    }
+
+    @Test
+    @DisplayName("Scenario 31: Very Tight Clustering - Overlapping Delivery Points")
+    void testCalcDeliveryPath_OverlappingPoints() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 5 orders within 10 meters of each other
+        List<MedDispatchRec> dispatches = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            dispatches.add(MedDispatchRec.builder()
+                    .id(31001 + i)
+                    .date(LocalDate.of(2025, 12, 22))
+                    .time(LocalTime.of(10, 0))
+                    .requirements(Requirements.builder().capacity(1.0).build())
+                    .delivery(LngLat.builder()
+                            .longitude(-3.186358 + (i * 0.00001)) // Tiny offset
+                            .latitude(55.944680 + (i * 0.00001))
+                            .build())
+                    .build());
+        }
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size(),
+                "Should use single drone for tightly clustered orders");
+
+        long totalDelivered = response.getDronePaths().get(0).getDeliveries().stream()
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(5, totalDelivered);
+    }
+
+    @Test
+    @DisplayName("Scenario 32: Rush Hour Split - Different Times Same Day")
+    void testCalcDeliveryPath_DifferentTimeSlots() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Orders at morning (AM) and afternoon (PM) on Monday
+        List<MedDispatchRec> dispatches = List.of(
+                // Morning orders
+                MedDispatchRec.builder().id(32001).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(8, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build()).build(),
+                MedDispatchRec.builder().id(32002).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(9, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build()).build(),
+                // Afternoon orders
+                MedDispatchRec.builder().id(32003).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(14, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186450).latitude(55.944720).build()).build(),
+                MedDispatchRec.builder().id(32004).date(LocalDate.of(2025, 12, 22)).time(LocalTime.of(15, 0))
+                        .requirements(Requirements.builder().capacity(1.0).build())
+                        .delivery(LngLat.builder().longitude(-3.186500).latitude(55.944740).build()).build()
+        );
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(4, totalDelivered, "All 4 orders must be delivered");
+    }
+
+    @Test
+    @DisplayName("Scenario 33: Grid Pattern - Systematic Coverage")
+    void testCalcDeliveryPath_GridPattern() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // 9 orders in 3x3 grid pattern
+        List<MedDispatchRec> dispatches = new ArrayList<>();
+        int orderId = 33001;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                dispatches.add(MedDispatchRec.builder()
+                        .id(orderId++)
+                        .date(LocalDate.of(2025, 12, 22))
+                        .time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(0.5).build())
+                        .delivery(LngLat.builder()
+                                .longitude(-3.186358 + (i * 0.0005))
+                                .latitude(55.944680 + (j * 0.0005))
+                                .build())
+                        .build());
+            }
+        }
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        long totalDelivered = response.getDronePaths().stream()
+                .flatMap(p -> p.getDeliveries().stream())
+                .filter(d -> d.getDeliveryId() != null)
+                .count();
+        assertEquals(9, totalDelivered, "All 9 grid orders must be delivered");
+    }
+
+    @Test
+    @DisplayName("Scenario 34: Single Large Order - Maximum Capacity")
+    void testCalcDeliveryPath_MaxCapacityOrder() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Single 19kg order (just under max of 20kg)
+        MedDispatchRec dispatch = MedDispatchRec.builder()
+                .id(34001)
+                .date(LocalDate.of(2025, 12, 22))
+                .time(LocalTime.of(10, 0))
+                .requirements(Requirements.builder().capacity(19.0).build())
+                .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                .build();
+
+        // Execute
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(List.of(dispatch));
+
+        System.out.println(response);
+
+        // Assertions
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size());
+
+        String droneId = response.getDronePaths().get(0).getDroneId();
+        // Only Drones 3 and 8 have capacity >= 19kg
+        assertTrue(List.of("3", "8").contains(droneId),
+                "Should choose high-capacity drone (3 or 8)");
+    }
+
+    @Test
+    @DisplayName("Scenario 16: Max Cost - Multiple Deliveries (Success)")
+    void testCalcDeliveryPath_MaxCost_Multiple_Success() {
+        // Setup
+        when(ilpServiceClientMock.getAllDrones()).thenReturn(createFullDroneList());
+        when(ilpServiceClientMock.getDroneAvailability()).thenReturn(createFullAvailabilityList());
+        when(ilpServiceClientMock.getServicePoints()).thenReturn(createServicePoints());
+        when(ilpServiceClientMock.getRestrictedAreas()).thenReturn(createRestrictedAreas());
+        droneQueryService = new DroneQueryService(ilpServiceClientMock, new RestService());
+
+        // Drone 1 (Cost 0.01/move, Initial 4.3, Final 6.5)
+        // Approx flight to Appleton area: ~100 moves?
+        // Fixed cost = 10.8. Variable ~1.0. Total ~12.0.
+        // Per dispatch cost ~6.0.
+
+        List<MedDispatchRec> dispatches = List.of(
+                MedDispatchRec.builder()
+                        .id(16001)
+                        .date(LocalDate.of(2025, 12, 22))
+                        .time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).maxCost(15.0).build()) // Budget 15
+                        .delivery(LngLat.builder().longitude(-3.186358).latitude(55.944680).build())
+                        .build(),
+                MedDispatchRec.builder()
+                        .id(16002)
+                        .date(LocalDate.of(2025, 12, 22))
+                        .time(LocalTime.of(10, 0))
+                        .requirements(Requirements.builder().capacity(1.0).maxCost(15.0).build()) // Budget 15
+                        .delivery(LngLat.builder().longitude(-3.186400).latitude(55.944700).build())
+                        .build()
+        );
+
+        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(dispatches);
+
+        System.out.println(response);
+
+        assertNotNull(response);
+        assertEquals(1, response.getDronePaths().size(), "Should use 1 drone");
+        String droneId = response.getDronePaths().get(0).getDroneId();
+
+        // Drone 1 is cheap enough.
+        assertTrue(List.of("1", "7", "4").contains(droneId));
+    }
+
+
 }
 

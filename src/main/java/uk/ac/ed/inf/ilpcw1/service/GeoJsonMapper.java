@@ -48,6 +48,16 @@ public class GeoJsonMapper {
         // 4. Add Drone Paths (Colored Lines)
         if (raceData.getDroneResults() != null) {
             for (DroneRaceResult result : raceData.getDroneResults()) {
+                // --- CHANGE START ---
+                // If the drone failed to find a path (crashed/stuck), the coordinates will be empty.
+                // We skip adding this feature so it doesn't clutter or break the GeoJSON map.
+                if (result.getPath() == null ||
+                        result.getPath().getCoordinates() == null ||
+                        result.getPath().getCoordinates().isEmpty()) {
+                    continue;
+                }
+                // --- CHANGE END ---
+
                 Map<String, Object> props = new HashMap<>();
                 props.put("algorithm", result.getAlgorithmName());
                 props.put("moveCount", result.getMoveCount());
