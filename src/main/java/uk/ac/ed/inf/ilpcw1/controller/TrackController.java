@@ -4,7 +4,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import uk.ac.ed.inf.ilpcw1.data.GeoJsonLineString;
+import uk.ac.ed.inf.ilpcw1.data.GeoJsonPolygon;
 import uk.ac.ed.inf.ilpcw1.service.TrackGenerationService;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/track")
@@ -31,5 +34,11 @@ public class TrackController {
             e.printStackTrace(); // Print error to console for debugging
             throw new RuntimeException("Failed to process image: " + e.getMessage());
         }
+    }
+
+    // --- NEW ENDPOINT ---
+    @GetMapping("/presets")
+    public ResponseEntity<Map<String, GeoJsonPolygon>> getTrackPresets() {
+        return ResponseEntity.ok(trackService.getPreloadedTracks());
     }
 }

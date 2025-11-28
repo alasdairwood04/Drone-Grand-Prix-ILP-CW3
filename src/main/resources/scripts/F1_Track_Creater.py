@@ -1,0 +1,144 @@
+import json
+import os
+import pyproj
+import math
+from shapely.geometry import shape, mapping, LineString, Polygon
+from shapely.ops import transform
+from shapely.affinity import scale as shapely_scale
+
+# --- CONFIGURATION ---
+# Paste your input GeoJSON here or load from a file
+input_geojson = {
+    "type": "FeatureCollection",
+    "name": "us-2023",
+    "bbox": [ -115.173181, 36.107928, -115.160107, 36.125540 ],
+    "features": [
+        { "type": "Feature", "properties": { "id": "us-2023", "Location": "Las Vegas", "Name": "Las Vegas Street Circuit", "opened": 2023, "firstgp": 2023, "length": 6201, "altitude": 610 }, "bbox": [ -115.173181, 36.107928, -115.160107, 36.12554 ], "geometry": { "type": "LineString", "coordinates": [ [ -115.161202, 36.109904 ], [ -115.160589, 36.110461 ], [ -115.160459, 36.110578 ], [ -115.160366, 36.110705 ], [ -115.160335, 36.110856 ], [ -115.160414, 36.110992 ], [ -115.160543, 36.111079 ], [ -115.160775, 36.11115 ], [ -115.160996, 36.111179 ], [ -115.161209, 36.111169 ], [ -115.161408, 36.111121 ], [ -115.161844, 36.110909 ], [ -115.162247, 36.110586 ], [ -115.162402, 36.110503 ], [ -115.162741, 36.110442 ], [ -115.162924, 36.110445 ], [ -115.163255, 36.110535 ], [ -115.163438, 36.110617 ], [ -115.163608, 36.110734 ], [ -115.16389, 36.111042 ], [ -115.164004, 36.111303 ], [ -115.164082, 36.119035 ], [ -115.164023, 36.119152 ], [ -115.163908, 36.119211 ], [ -115.161934, 36.119181 ], [ -115.161342, 36.119184 ], [ -115.161033, 36.119242 ], [ -115.160908, 36.119329 ], [ -115.160559, 36.119604 ], [ -115.160402, 36.119783 ], [ -115.160282, 36.119976 ], [ -115.160195, 36.120145 ], [ -115.160143, 36.120365 ], [ -115.160107, 36.120627 ], [ -115.160117, 36.120781 ], [ -115.160225, 36.120836 ], [ -115.160511, 36.120862 ], [ -115.160611, 36.120913 ], [ -115.160697, 36.12102 ], [ -115.160731, 36.121187 ], [ -115.160715, 36.121309 ], [ -115.160438, 36.121696 ], [ -115.16039, 36.121799 ], [ -115.160274, 36.121977 ], [ -115.160316, 36.122164 ], [ -115.160541, 36.122284 ], [ -115.160959, 36.122322 ], [ -115.164089, 36.122386 ], [ -115.165245, 36.122522 ], [ -115.165627, 36.122671 ], [ -115.166049, 36.123022 ], [ -115.166411, 36.123607 ], [ -115.166965, 36.124659 ], [ -115.167321, 36.124962 ], [ -115.16769, 36.125167 ], [ -115.168065, 36.125279 ], [ -115.168652, 36.125432 ], [ -115.169318, 36.12554 ], [ -115.169409, 36.125522 ], [ -115.169496, 36.125468 ], [ -115.169564, 36.125284 ], [ -115.169633, 36.125158 ], [ -115.170324, 36.124067 ], [ -115.170754, 36.123418 ], [ -115.170978, 36.123089 ], [ -115.171208, 36.122772 ], [ -115.171605, 36.122215 ], [ -115.172013, 36.121466 ], [ -115.172229, 36.1209 ], [ -115.172466, 36.120249 ], [ -115.172625, 36.119783 ], [ -115.172744, 36.119319 ], [ -115.172839, 36.118849 ], [ -115.17294, 36.11816 ], [ -115.172965, 36.117758 ], [ -115.172991, 36.117279 ], [ -115.17298, 36.115982 ], [ -115.172974, 36.115241 ], [ -115.172971, 36.114679 ], [ -115.173104, 36.111742 ], [ -115.173144, 36.110235 ], [ -115.173145, 36.109483 ], [ -115.173181, 36.108577 ], [ -115.173118, 36.108504 ], [ -115.173032, 36.10848 ], [ -115.172826, 36.108483 ], [ -115.172674, 36.108436 ], [ -115.172332, 36.108159 ], [ -115.172033, 36.108021 ], [ -115.171635, 36.107958 ], [ -115.169902, 36.107928 ], [ -115.167635, 36.10795 ], [ -115.16577, 36.107941 ], [ -115.164859, 36.107951 ], [ -115.164113, 36.108035 ], [ -115.163333, 36.108155 ], [ -115.16313, 36.10823 ], [ -115.162966, 36.108313 ], [ -115.162835, 36.108413 ], [ -115.161202, 36.109904 ] ] } }
+    ]
+}
+
+def create_start_line_barrier(line_geom, track_width):
+    """
+    Creates a thin rectangular polygon perpendicular to the start of the line
+    to act as a wall/finish line barrier.
+    """
+    coords = list(line_geom.coords)
+    if len(coords) < 2:
+        return None
+
+    # Get start point (p0) and the next point (p1) to determine direction
+    p0 = coords[0]
+    p1 = coords[1]
+
+    # Calculate vector direction of the track start
+    dx = p1[0] - p0[0]
+    dy = p1[1] - p0[1]
+
+    # Normalize vector
+    length = math.sqrt(dx*dx + dy*dy)
+    if length == 0: return None
+
+    # Calculate perpendicular vector (-y, x) for the wall direction
+    perp_dx = -dy / length
+    perp_dy = dx / length
+
+    # Length of the wall (needs to be wider than the track to cut all the way through)
+    # track_width is the radius, so width*2 is full width. We do *2.5 to be safe.
+    wall_len = track_width * 2.5
+
+    # Create two points extending outwards from the center p0
+    wall_start_x = p0[0] + perp_dx * (wall_len / 2)
+    wall_start_y = p0[1] + perp_dy * (wall_len / 2)
+
+    wall_end_x = p0[0] - perp_dx * (wall_len / 2)
+    wall_end_y = p0[1] - perp_dy * (wall_len / 2)
+
+    barrier_line = LineString([(wall_start_x, wall_start_y), (wall_end_x, wall_end_y)])
+
+    # Buffer the line to give the wall some thickness (e.g., 0.5 meters thick)
+    # This creates a Polygon representing the wall
+    return barrier_line.buffer(0.5)
+
+def convert_centerline_to_track(output_path=None, scale_factor=1.0, buffer_radius=7.5):
+    # Define projections
+    wgs84 = pyproj.CRS('EPSG:4326')
+    utm = pyproj.CRS('EPSG:32614') # UTM Zone 14N for Texas
+
+    project_to_meters = pyproj.Transformer.from_crs(wgs84, utm, always_xy=True).transform
+    project_to_latlon = pyproj.Transformer.from_crs(utm, wgs84, always_xy=True).transform
+
+    # 1. Extract Track Name
+    props = input_geojson['features'][0]['properties']
+    track_name = props.get('Location', props.get('Name', 'UnknownTrack'))
+
+    polygon_geom = None
+
+    for feature in input_geojson['features']:
+        if feature['geometry']['type'] == 'LineString':
+            # 1. Load Geometry
+            line_geom = shape(feature['geometry'])
+
+            # 2. Project to Meters
+            line_meters = transform(project_to_meters, line_geom)
+
+            # 3. Buffer to create the Track Surface
+            track_polygon_meters = line_meters.buffer(buffer_radius, cap_style=1, join_style=1)
+
+            # 4. Scale if requested
+            if scale_factor != 1.0:
+                centroid = track_polygon_meters.centroid
+                track_polygon_meters = shapely_scale(
+                    track_polygon_meters,
+                    xfact=scale_factor,
+                    yfact=scale_factor,
+                    origin=(centroid.x, centroid.y)
+                )
+                # Also scale the centerline reference for barrier calculation
+                line_meters = shapely_scale(
+                    line_meters,
+                    xfact=scale_factor,
+                    yfact=scale_factor,
+                    origin=(centroid.x, centroid.y)
+                )
+
+            # --- NEW LOGIC: Create and Subtract Barrier ---
+            print("Cutting start/finish line barrier...")
+            barrier_polygon = create_start_line_barrier(line_meters, buffer_radius)
+
+            if barrier_polygon:
+                # Subtract the barrier from the track, creating a gap
+                track_polygon_meters = track_polygon_meters.difference(barrier_polygon)
+            # ----------------------------------------------
+
+            # 5. Project back to Lat/Lon
+            track_polygon_wgs84 = transform(project_to_latlon, track_polygon_meters)
+
+            # 6. Map to GeoJSON Dictionary
+            polygon_geom = mapping(track_polygon_wgs84)
+
+            # Shapely .difference() might produce a MultiPolygon if the cut is messy.
+            # We want to ensure we output a type "Polygon" if possible, or handle MultiPolygon.
+            # Ideally for a clean cut, it remains a single Polygon (just C-shaped).
+            if polygon_geom['type'] == 'MultiPolygon':
+                # If it split into pieces, take the largest piece (the track)
+                # This handles edge cases where the cut leaves tiny artifacts
+                pass # mapping() handles the structure, we just accept it.
+            else:
+                polygon_geom['type'] = 'Polygon'
+
+    if polygon_geom is None:
+        raise RuntimeError("No LineString feature found to convert.")
+
+    # Save File
+    output_dir = r"C:\Users\alasd\OneDrive\Desktop\1. University\Third Year\Informatics Large Practical\CW3\Drone-Grand-Prix-ILP-CW3\src\main\resources\tracks"
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{track_name}.json")
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(polygon_geom, f, indent=2)
+
+    print(f"✅ Successfully generated: {output_path}")
+
+if __name__ == "__main__":
+    # Run conversion
+    convert_centerline_to_track(scale_factor=1.0, buffer_radius=10)

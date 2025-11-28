@@ -1,10 +1,15 @@
 package uk.ac.ed.inf.ilpcw1.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import uk.ac.ed.inf.ilpcw1.data.GeoJsonLineString;
+import uk.ac.ed.inf.ilpcw1.data.GeoJsonPolygon;
 import uk.ac.ed.inf.ilpcw1.data.LngLat;
 import uk.ac.ed.inf.ilpcw1.data.RestrictedArea;
 
@@ -12,16 +17,60 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 public class TrackGenerationService {
     private static final Logger logger = LoggerFactory.getLogger(DroneQueryService.class);
 
+
+    /**
+     * Loads pre-defined tracks from the tracks.json resource file.
+     * @return A Map where the key is the track name (e.g., "Austin") and the value is the GeoJsonPolygon.
+     */
+    public Map<String, GeoJsonPolygon> getPreloadedTracks() {
+        Map<String, GeoJsonPolygon> tracks = new HashMap<>();
+        ObjectMapper mapper = new ObjectMapper();
+        ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+
+        try {
+            // 1. Find all .json files in the tracks folder
+            Resource[] resources = resolver.getResources("classpath:tracks/*.json");
+
+            for (Resource resource : resources) {
+                try {
+                    // 2. Determine Track Name from Filename (e.g., "Austin.json" -> "Austin")
+                    String filename = resource.getFilename();
+                    if (filename == null) continue;
+
+                    String trackName = filename.replace(".json", "");
+
+                    // 3. Parse the file content into GeoJsonPolygon
+                    GeoJsonPolygon trackPoly = mapper.readValue(resource.getInputStream(), GeoJsonPolygon.class);
+
+                    logger.info("Parsed track file: {} as {}", filename, trackPoly);
+
+                    // 4. Add to map
+                    tracks.put(trackName, trackPoly);
+                    logger.info("Loaded track: {}", trackName);
+
+                } catch (IOException e) {
+                    logger.error("Failed to load track file: " + resource.getFilename(), e);
+                }
+            }
+        } catch (IOException e) {
+            logger.error("Could not access tracks directory", e);
+        }
+
+        return tracks;
+    }
     public GeoJsonLineString extractTrackFromImage(MultipartFile file) throws IOException {
         // 1. Create Temp Files for Image AND Script
         Path tempImageFile = Files.createTempFile("upload_", ".png");
@@ -128,19 +177,45 @@ public class TrackGenerationService {
                 .build();
     }
 
-    public List<RestrictedArea> convertFromGeoJson(GeoJsonLineString geoJson) {
-        if (geoJson == null || geoJson.getCoordinates() == null) return new ArrayList<>();
+    public List<RestrictedArea> convertFromGeoJson(GeoJsonPolygon geoJson) {
+        if (geoJson == null || geoJson.getCoordinates() == null || geoJson.getCoordinates().isEmpty()) {
+            return new ArrayList<>();
+        }
 
-        List<LngLat> vertices = geoJson.getCoordinates().stream()
-                .map(coord -> new LngLat(coord.get(0), coord.get(1)))
-                .collect(Collectors.toList());
+        List<LngLat> singlePathVertices = new ArrayList<>();
 
-        // The user drawing is the "Track" (The allowed area)
+        // 1. Get Outer Ring (The main track boundary)
+        List<List<Double>> outerRing = geoJson.getCoordinates().get(0);
+        for (List<Double> coord : outerRing) {
+            singlePathVertices.add(new LngLat(coord.get(0), coord.get(1)));
+        }
+
+        // 2. Handle Holes (The Infield)
+        // If there are holes (index 1+), we must "cut" to them to make the infield invalid
+        if (geoJson.getCoordinates().size() > 1) {
+            // Iterate through all holes (usually just 1 for a race track)
+            for (int i = 1; i < geoJson.getCoordinates().size(); i++) {
+                List<List<Double>> holeRing = geoJson.getCoordinates().get(i);
+
+                // Add the hole vertices to our single path
+                for (List<Double> coord : holeRing) {
+                    singlePathVertices.add(new LngLat(coord.get(0), coord.get(1)));
+                }
+
+                // Close the hole loop (go back to first point of hole)
+                List<Double> firstHolePoint = holeRing.get(0);
+                singlePathVertices.add(new LngLat(firstHolePoint.get(0), firstHolePoint.get(1)));
+
+                // "Cut" back to the start of the Outer Ring to close the entire shape
+                List<Double> startOuter = outerRing.get(0);
+                singlePathVertices.add(new LngLat(startOuter.get(0), startOuter.get(1)));
+            }
+        }
+
         RestrictedArea trackBoundary = RestrictedArea.builder()
                 .name("User Drawn Track")
-                .vertices(vertices)
+                .vertices(singlePathVertices)
                 .build();
 
         return List.of(trackBoundary);
-    }
-}
+    }}

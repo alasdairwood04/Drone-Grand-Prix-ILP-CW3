@@ -63,7 +63,7 @@ public class RacerService {
 
         logger.info("Starting race from {} to {}", start, end);
 
-        GeoJsonLineString trackObstaclesGeo = request.getLlmInput();
+        GeoJsonPolygon trackObstaclesGeo = request.getLlmInput();
         List<RestrictedArea> trackObstacles = trackGenerationService.convertFromGeoJson(trackObstaclesGeo);
 
         if (trackObstacles == null) {
