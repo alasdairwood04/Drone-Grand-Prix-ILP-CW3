@@ -5,7 +5,6 @@ import sys
 
 # --- CONFIGURATION: CENTRED ON THE MEADOWS ---
 # Center: -3.192, 55.942
-# We define a bounding box approx 3km x 3km around it.
 
 # Longitude: -3.192 +/- 0.025 (Wider range = Bigger horizontal track)
 MIN_LNG, MAX_LNG = -3.205, -3.180
@@ -22,7 +21,6 @@ def process_track(image_path):
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Invert threshold: assumes dark track line on light background
     _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 

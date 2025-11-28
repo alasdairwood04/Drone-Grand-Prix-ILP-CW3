@@ -80,7 +80,7 @@ public class TrackGenerationService {
             // Copy the uploaded image to temp file
             file.transferTo(tempImageFile.toFile());
 
-            // COPY THE PYTHON SCRIPT FROM RESOURCES TO TEMP FILE
+            // Copy the Python script from resources to temp file
             ClassPathResource scriptResource = new ClassPathResource("scripts/track_processor.py");
             if (!scriptResource.exists()) {
                 throw new RuntimeException("Python script not found in resources");
@@ -94,7 +94,6 @@ public class TrackGenerationService {
                     tempImageFile.toString()
             );
 
-            // MERGE ERROR STREAM so you see Python errors
             pb.redirectErrorStream(true);
 
             // 3. Start the process
@@ -123,17 +122,6 @@ public class TrackGenerationService {
             Files.deleteIfExists(tempImageFile);
             Files.deleteIfExists(tempScriptFile);
         }
-    }
-
-    /**
-     * Generates a "Track" (list of No-Fly Zones) based on start/end points.
-     * TODO: CW3 - Replace the logic below with an LLM call.
-     * * Prompt Strategy: "Given start [lat,lng] and end [lat,lng], generate 3 rectangular
-     * RestrictedAreas that intersect the direct line path, forcing a deviation."
-     */
-    public List<RestrictedArea> generateTrack(LngLat start, LngLat end) {
-        // Placeholder: procedural generation
-        return generateProceduralObstacles(start, end);
     }
 
     private List<RestrictedArea> generateProceduralObstacles(LngLat start, LngLat end) {
@@ -167,10 +155,6 @@ public class TrackGenerationService {
                 .map(p -> List.of(p.getLongitude(), p.getLatitude()))
                 .collect(Collectors.toList());
 
-        // GeoJSON polygons usually require the type "Polygon", but if your UI expects "LineString"
-        // (which essentially draws the outline), we can keep it as LineString.
-        // If you want a filled shape, this should technically be "Polygon" and nested one level deeper [[...]].
-        // Keeping as LineString for consistency with your existing GeoJsonLineString class.
         return GeoJsonLineString.builder()
                 .type("LineString")
                 .coordinates(coordinates)
@@ -191,7 +175,6 @@ public class TrackGenerationService {
         }
 
         // 2. Handle Holes (The Infield)
-        // If there are holes (index 1+), we must "cut" to them to make the infield invalid
         if (geoJson.getCoordinates().size() > 1) {
             // Iterate through all holes (usually just 1 for a race track)
             for (int i = 1; i < geoJson.getCoordinates().size(); i++) {

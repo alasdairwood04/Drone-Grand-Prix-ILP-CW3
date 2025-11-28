@@ -7,7 +7,6 @@ from shapely.ops import transform
 from shapely.affinity import scale as shapely_scale
 
 # --- CONFIGURATION ---
-# Paste your input GeoJSON here or load from a file
 input_geojson = {
     "type": "FeatureCollection",
     "name": "us-2023",
@@ -55,7 +54,6 @@ def create_start_line_barrier(line_geom, track_width):
 
     barrier_line = LineString([(wall_start_x, wall_start_y), (wall_end_x, wall_end_y)])
 
-    # Buffer the line to give the wall some thickness (e.g., 0.5 meters thick)
     # This creates a Polygon representing the wall
     return barrier_line.buffer(0.5)
 
@@ -101,7 +99,6 @@ def convert_centerline_to_track(output_path=None, scale_factor=1.0, buffer_radiu
                     origin=(centroid.x, centroid.y)
                 )
 
-            # --- NEW LOGIC: Create and Subtract Barrier ---
             print("Cutting start/finish line barrier...")
             barrier_polygon = create_start_line_barrier(line_meters, buffer_radius)
 
@@ -116,12 +113,8 @@ def convert_centerline_to_track(output_path=None, scale_factor=1.0, buffer_radiu
             # 6. Map to GeoJSON Dictionary
             polygon_geom = mapping(track_polygon_wgs84)
 
-            # Shapely .difference() might produce a MultiPolygon if the cut is messy.
-            # We want to ensure we output a type "Polygon" if possible, or handle MultiPolygon.
-            # Ideally for a clean cut, it remains a single Polygon (just C-shaped).
+            # Ensure correct type is set
             if polygon_geom['type'] == 'MultiPolygon':
-                # If it split into pieces, take the largest piece (the track)
-                # This handles edge cases where the cut leaves tiny artifacts
                 pass # mapping() handles the structure, we just accept it.
             else:
                 polygon_geom['type'] = 'Polygon'
