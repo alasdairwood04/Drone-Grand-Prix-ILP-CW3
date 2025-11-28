@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Drone Grand Prix Live</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { margin: 0; padding: 0; background: #0f0f13; color: #fff; font-family: 'Roboto', sans-serif; overflow: hidden; }
+
+        /* --- LAYOUT GRID --- */
+        #container { display: grid; grid-template-columns: 1fr 350px; grid-template-rows: 60px 1fr 200px; height: 100vh; }
+
+        /* --- HEADER (TIMER) --- */
+        #header { grid-column: 1 / -1; background: #1a1a1a; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 2px solid #333; }
+        .brand { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 24px; color: #3498db; letter-spacing: 2px; }
+
+        #race-timer { font-family: 'Orbitron', sans-serif; font-size: 32px; color: #e74c3c; font-weight: bold; background: #000; padding: 5px 20px; border-radius: 4px; border: 1px solid #333; }
+
+        /* --- MAP AREA --- */
+        #map { grid-column: 1 / 2; grid-row: 2 / 3; background: #000; }
+
+        /* --- SIDEBAR (LEADERBOARD) --- */
+        #sidebar { grid-column: 2 / 3; grid-row: 2 / 4; background: #161618; border-left: 2px solid #333; padding: 15px; display: flex; flex-direction: column; }
+        h2 { font-family: 'Orbitron', sans-serif; margin-top: 0; color: #f1c40f; text-transform: uppercase; font-size: 18px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+
+        .leaderboard-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .leaderboard-table th { text-align: left; color: #888; padding: 5px; border-bottom: 1px solid #333; }
+        .leaderboard-table td { padding: 8px 5px; border-bottom: 1px solid #222; }
+        .rank-cell { font-weight: bold; color: #3498db; width: 30px; }
+        .time-cell { font-family: 'Orbitron', sans-serif; color: #2ecc71; text-align: right; }
+        .drone-color-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+
+        /* --- BOTTOM CONTROLS & LOGS --- */
+        #controls-area { grid-column: 1 / 2; grid-row: 3 / 4; background: #111; border-top: 2px solid #333; display: flex; flex-direction: column; }
+
+        #control-buttons { padding: 10px; display: flex; gap: 10px; justify-content: center; background: #1a1a1a; }
+        button { padding: 10px 24px; font-family: 'Orbitron', sans-serif; font-size: 14px; cursor: pointer; border: none; border-radius: 4px; transition: 0.2s; text-transform: uppercase; font-weight: bold; }
+
+        .btn-start { background: #27ae60; color: white; }
+        .btn-start:hover { background: #2ecc71; }
+        .btn-reset { background: #c0392b; color: white; }
+        .btn-upload { background: #2980b9; color: white; }
+
+        #commentary-box { flex-grow: 1; overflow-y: auto; padding: 15px; font-family: 'Courier New', monospace; font-size: 13px; color: #aaa; }
+        #commentary-box p { margin: 4px 0; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        .log-highlight { color: #f1c40f; font-weight: bold; }
+        .log-finish { color: #2ecc71; }
+
+        /* --- OVERLAYS --- */
+        #countdown-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 9999;
+            display: none; align-items: center; justify-content: center;
+            font-family: 'Orbitron', sans-serif; font-size: 120px; color: #f1c40f;
+            text-shadow: 0 0 20px rgba(241, 196, 15, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="header">
+        <div class="brand">DRONE GP <span style="font-size:12px; color:#666">LIVE FEED</span></div>
+        <div id="race-timer">00:00.00</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="sidebar">
+        <h2>Live Standings</h2>
+        <table class="leaderboard-table">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Drone / Algorithm</th>
+                <th style="text-align:right">Time</th>
+            </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+            </tbody>
+        </table>
+
+        <div style="margin-top: 20px; padding: 10px; background: #222; border-radius: 4px;">
+            <div style="font-size: 12px; color: #888; margin-bottom: 5px;">RACE STATUS</div>
+            <div id="race-status-text" style="color: #fff; font-weight: bold;">WAITING FOR SETUP</div>
+        </div>
+    </div>
+
+    <div id="controls-area">
+        <div id="control-buttons">
+            <button class="btn-start" onclick="prepareRace()">Start Race</button>
+            <button class="btn-reset" onclick="clearMap()">Reset Track</button>
+            <input type="file" id="track-upload" accept="image/*" style="display:none" onchange="uploadTrack(this)">
+            <button class="btn-upload" onclick="document.getElementById('track-upload').click()">📷 Upload Track Map</button>
+        </div>
+        <div id="commentary-box">
+            <p>> System Online. Waiting for track data...</p>
+        </div>
+    </div>
+</div>
+
+<div id="countdown-overlay">3</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<script>
+    // --- MAP INITIALIZATION ---
+    // Centered on The Meadows as requested
+    const map = L.map('map', { zoomControl: false }).setView([55.944, -3.188], 15);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        maxZoom: 19
+    }).addTo(map);
+
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    const drawControl = new L.Control.Draw({
+        draw: { polygon: true, marker: true, polyline: false, circle: false, rectangle: false, circlemarker: false },
+        edit: { featureGroup: drawnItems }
+    });
+    map.addControl(drawControl);
+
+    // --- STATE VARIABLES ---
+    let trackPolygon = null;
+    let startPoint = null;
+    let endPoint = null;
+
+    // Racing State
+    let raceInterval = null;
+    let startTime = 0;
+    let activeDrones = 0;
+    let finishedDrones = [];
+
+    // --- LEAFLET EVENTS ---
+    map.on(L.Draw.Event.CREATED, function (e) {
+        const layer = e.layer;
+        drawnItems.addLayer(layer);
+
+        if (e.layerType === 'polygon') {
+            trackPolygon = layer;
+            logCommentary("Track boundary established.", "log-highlight");
+        } else if (e.layerType === 'marker') {
+            if (!startPoint) {
+                startPoint = layer.getLatLng();
+                layer.bindPopup("Start Line").openPopup();
+                logCommentary("Start line set at " + startPoint.toString());
+            } else if (!endPoint) {
+                endPoint = layer.getLatLng();
+                layer.bindPopup("Finish Line").openPopup();
+                logCommentary("Finish line set at " + endPoint.toString());
+            }
+        }
+    });
+
+    // --- CORE RACE LOGIC ---
+
+    // 1. Prepare Race (Fetch Data)
+    async function prepareRace() {
+        if (!trackPolygon || !startPoint || !endPoint) {
+            alert("Please draw a track polygon and place 2 markers (Start & End)");
+            return;
+        }
+
+        logCommentary("Initializing Race Systems...", "log-highlight");
+        document.getElementById('race-status-text').innerText = "CALCULATING...";
+        document.getElementById('race-status-text').style.color = "#f1c40f"; // Yellow
+
+        // Convert Leaflet Polygon to Backend GeoJsonLineString format
+        const latLngs = trackPolygon.getLatLngs()[0];
+        const coordinates = latLngs.map(pt => [pt.lng, pt.lat]);
+        coordinates.push(coordinates[0]); // Close loop
+
+        const payload = {
+            startLocation: { lat: startPoint.lat, lng: startPoint.lng },
+            endLocation: { lat: endPoint.lat, lng: endPoint.lng },
+            LLMInput: { type: "LineString", coordinates: coordinates }
+        };
+
+        try {
+            const response = await fetch('http://localhost:8080/api/v1/race/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if(!response.ok) throw new Error("Server Error");
+
+            const raceData = await response.json();
+
+            // Start the visual countdown
+            startCountdown(raceData);
+
+        } catch (error) {
+            console.error(error);
+            logCommentary("Error calculating path: " + error.message, "log-finish"); // Red color reuse
+        }
+    }
+
+    // 2. Countdown Logic
+    function startCountdown(raceData) {
+        const overlay = document.getElementById('countdown-overlay');
+        overlay.style.display = 'flex';
+
+        let count = 3;
+        overlay.innerText = count;
+
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                overlay.innerText = count;
+            } else if (count === 0) {
+                overlay.innerText = "GO!";
+                overlay.style.color = "#2ecc71"; // Green
+            } else {
+                clearInterval(interval);
+                overlay.style.display = 'none';
+                runRaceSimulation(raceData); // Start actual movement
+            }
+        }, 1000);
+    }
+
+    // 3. Animation Loop (The Race)
+    function runRaceSimulation(raceData) {
+        logCommentary("RACE STARTED!", "log-highlight");
+        document.getElementById('race-status-text').innerText = "RACE IN PROGRESS";
+        document.getElementById('race-status-text').style.color = "#2ecc71";
+
+        // Reset UI
+        document.getElementById('leaderboard-body').innerHTML = "";
+        finishedDrones = [];
+
+        // Start Global Timer
+        startTime = Date.now();
+        raceInterval = setInterval(updateTimerDisplay, 37); // Update UI roughly 27fps
+
+        const results = raceData.droneResults;
+        activeDrones = results.length;
+
+        results.forEach(drone => {
+            if(!drone.path || !drone.path.coordinates || drone.path.coordinates.length === 0) {
+                activeDrones--;
+                logCommentary(`${drone.algorithmName} failed to launch.`);
+                return;
+            }
+
+            // Create Visual Drone Marker
+            const droneIcon = L.divIcon({
+                className: 'drone-marker',
+                html: `<div style="background:${drone.color}; width:12px; height:12px; border-radius:50%; box-shadow: 0 0 8px ${drone.color}; border: 2px solid white;"></div>`
+            });
+
+            const marker = L.marker([raceData.startLocation.lat, raceData.startLocation.lng], {icon: droneIcon}).addTo(map);
+            const pathCoords = drone.path.coordinates; // [lng, lat]
+
+            // Drone Movement Loop
+            let step = 0;
+            const droneInterval = setInterval(() => {
+                if (step >= pathCoords.length) {
+                    clearInterval(droneInterval);
+                    finishDrone(drone, Date.now() - startTime); // Record finish time
+                    return;
+                }
+                // Move marker
+                const [lng, lat] = pathCoords[step];
+                marker.setLatLng([lat, lng]);
+                step++;
+            }, 50); // Speed: 50ms per move
+        });
+    }
+
+    // 4. Handle Drone Finishing
+    function finishDrone(drone, finalTimeMs) {
+        activeDrones--;
+
+        const timeStr = formatTime(finalTimeMs);
+        finishedDrones.push({ ...drone, timeStr, rawTime: finalTimeMs });
+
+        // Sort Leaderboard by time
+        finishedDrones.sort((a,b) => a.rawTime - b.rawTime);
+
+        renderLeaderboard();
+        logCommentary(`${drone.algorithmName} finished in ${timeStr}`, "log-finish");
+
+        // Stop Timer if everyone is finished
+        if (activeDrones <= 0) {
+            clearInterval(raceInterval);
+            document.getElementById('race-status-text').innerText = "RACE FINISHED";
+            document.getElementById('race-status-text').style.color = "#fff";
+            logCommentary("Race Complete. Final Standings updated.", "log-highlight");
+        }
+    }
+
+    // 5. Render Leaderboard
+    function renderLeaderboard() {
+        const tbody = document.getElementById('leaderboard-body');
+        tbody.innerHTML = "";
+
+        finishedDrones.forEach((d, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="rank-cell">${index + 1}</td>
+                <td><span class="drone-color-dot" style="background:${d.color}"></span>${d.algorithmName}</td>
+                <td class="time-cell">${d.timeStr}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // 6. Timer Formatter
+    function updateTimerDisplay() {
+        const elapsed = Date.now() - startTime;
+        document.getElementById('race-timer').innerText = formatTime(elapsed);
+    }
+
+    function formatTime(ms) {
+        const min = Math.floor(ms / 60000);
+        const sec = Math.floor((ms % 60000) / 1000);
+        const centi = Math.floor((ms % 1000) / 10);
+        return `${pad(min)}:${pad(sec)}.${pad(centi)}`;
+    }
+
+    function pad(num) {
+        return num.toString().padStart(2, '0');
+    }
+
+    function logCommentary(text, cssClass = "") {
+        const box = document.getElementById('commentary-box');
+        const p = document.createElement('p');
+        p.innerText = `> ${text}`;
+        if(cssClass) p.classList.add(cssClass);
+        box.prepend(p);
+    }
+
+    function clearMap() {
+        drawnItems.clearLayers();
+        trackPolygon = null; startPoint = null; endPoint = null;
+        document.getElementById('leaderboard-body').innerHTML = "";
+        document.getElementById('race-timer').innerText = "00:00.00";
+        logCommentary("Map cleared.");
+    }
+
+    // --- TRACK UPLOAD LOGIC (FIXED) ---
+    async function uploadTrack(input) {
+        if (!input.files || !input.files[0]) return;
+
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+
+        logCommentary("Processing image... (This might take a moment)");
+
+        try {
+            const response = await fetch('http://localhost:8080/api/v1/track/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error("Upload failed (Server returned " + response.status + ")");
+
+            const geoJson = await response.json();
+            const normalizedPoints = geoJson.coordinates;
+
+            if (!normalizedPoints || normalizedPoints.length === 0) {
+                logCommentary("Error: No track shape found in image.");
+                return;
+            }
+
+            if (trackPolygon) drawnItems.removeLayer(trackPolygon);
+
+            // FIX: No Scaling needed. Python script handles georeferencing.
+            // Backend returns [lng, lat], Leaflet needs [lat, lng].
+            const latLngs = normalizedPoints.map(([lng, lat]) => {
+                return [lat, lng]; // Just swap them
+            });
+
+            trackPolygon = L.polygon(latLngs, { color: '#3388ff' }).addTo(drawnItems);
+            map.fitBounds(trackPolygon.getBounds());
+
+            logCommentary("Track generated! Please place Start/End markers.", "log-highlight");
+            input.value = '';
+
+        } catch (error) {
+            console.error(error);
+            logCommentary("Error: " + error.message);
+        }
+    }
+
+</script>
+</body>
+</html>

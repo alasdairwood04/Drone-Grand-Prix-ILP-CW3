@@ -149,6 +149,9 @@ public class PathfindingService {
      * Returns TRUE if the move is INVALID (i.e., it leaves the region).
      */
     private boolean leavesAllowedRegions(LngLat pos1, LngLat pos2, List<Region> allowedRegions) {
+        // Quick check: if no allowed regions, any move is invalid
+        if (allowedRegions.isEmpty()) return false;
+
         for (Region region : allowedRegions) {
             // Check if points are spatially outside the region
             if (restService.isOutsideRegion(pos1, region) || restService.isOutsideRegion(pos2, region)) {
