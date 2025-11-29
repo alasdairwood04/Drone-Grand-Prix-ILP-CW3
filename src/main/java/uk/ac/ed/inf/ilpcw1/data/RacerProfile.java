@@ -10,6 +10,9 @@ public class RacerProfile {
     private String color;
     private SearchStrategy strategy; // e.g., A*, Greedy, Dijkstra
 
+    // SPEED/AGILITY PARAMETERS
+    private double turningPenalty; // cost added per degree of turn
+
     // PHYSICS PROPERTIES
     private double moveDistance;    // e.g., 0.00015 (Standard) vs 0.00030 (Fast)
 

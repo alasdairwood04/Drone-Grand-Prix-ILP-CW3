@@ -73,8 +73,9 @@ public class PathfindingService {
         double startG = 0;
         double startH = heuristic(start, goal, profile);
         double startF = calculateScore(startG, startH, profile);
+        double arrivalAngle = 0; // No arrival angle for start
 
-        Node startNode = new Node(start, null, startG, startH, startF);
+        Node startNode = new Node(start, null, startG, startH, startF, arrivalAngle);
         CoordinateKey startKey = CoordinateKey.fromLngLat(start);
 
         priorityQueue.add(startNode);
@@ -122,8 +123,19 @@ public class PathfindingService {
                     continue;
                 }
 
+                double moveCost = 1.0;
+
+                // turning penalty calculation
+                double turnCost = 0.0;
+                if (current.parent != null) {
+                    double angleDiff = Math.abs(angle - current.arrivalAngle);
+                    if (angleDiff > 180) {
+                        angleDiff = 360 - angleDiff; // Normalize to [0, 180]
+                    }
+                    turnCost = angleDiff * profile.getTurningPenalty();}
+
                 // Cost Calculation (1 move = cost 1)
-                double tentativeG = current.g + 1;
+                double tentativeG = current.g + moveCost + turnCost;
                 Node existingNode = allNodes.get(nextKey);
 
                 // If we found a cheaper path to this neighbor (or haven't seen it yet)
@@ -132,7 +144,7 @@ public class PathfindingService {
                     double f = calculateScore(tentativeG, h, profile);
 
                     // Create NEW node to avoid corrupting the PriorityQueue
-                    Node newNode = new Node(nextPos, current, tentativeG, h, f);
+                    Node newNode = new Node(nextPos, current, tentativeG, h, f, angle);
 
                     allNodes.put(nextKey, newNode);
                     priorityQueue.add(newNode);
