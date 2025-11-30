@@ -6,7 +6,7 @@ package uk.ac.ed.inf.ilpcw1.data;
  */
 
 public record CoordinateKey(long lng, long lat) {
-    private static final double PRECISION_SCALE = 10000.0; // 1e4
+    private static final double PRECISION_SCALE = 10000.0; // 1e5
 
     public static CoordinateKey fromLngLat(LngLat pos) {
         return new CoordinateKey(

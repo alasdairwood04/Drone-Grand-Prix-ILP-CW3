@@ -2,78 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AI Drone Grand Prix</title>
+    <title>Drone Grand Prix</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-    <style>
-        /* ... (Existing styles remain the same) ... */
-        :root {
-            --bg-color: #FFFFFF;
-            --sidebar-bg: #F7F7F5;
-            --text-main: #37352F;
-            --text-muted: #787774;
-            --border-color: #E0E0E0;
-            --accent-color: #2EAADC;
-            --danger-color: #EB5757;
-            --success-color: #27AE60;
-            --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-
-        body { margin: 0; padding: 0; background: var(--bg-color); color: var(--text-main); font-family: var(--font-stack); overflow: hidden; height: 100vh; display: flex; }
-
-        #sidebar { width: 360px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100%; flex-shrink: 0; z-index: 2; position: relative; }
-        .sidebar-header { padding: 24px 20px 12px 20px; border-bottom: 1px solid transparent; }
-        h1 { font-size: 16px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
-        .badge { font-size: 10px; background: #E3E2E0; color: var(--text-muted); padding: 2px 6px; border-radius: 4px; font-weight: 500; text-transform: uppercase;}
-        #race-timer { font-variant-numeric: tabular-nums; font-size: 42px; font-weight: 600; color: var(--text-main); margin: 12px 0; letter-spacing: -1px; }
-        #race-status-text { font-size: 12px; font-weight: 500; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
-        .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin: 24px 20px 8px 20px; letter-spacing: 0.5px; }
-
-        .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 20px; }
-        button { padding: 8px 12px; font-family: var(--font-stack); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid rgba(55, 53, 47, 0.16); background: #fff; border-radius: 6px; color: var(--text-main); transition: all 0.1s ease; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        button:hover { background: #EFEFEF; }
-        button:active { transform: translateY(1px); box-shadow: none; }
-        .btn-primary { background: #37352F; color: #fff; border-color: #37352F; }
-        .btn-primary:hover { background: #111; }
-
-        .leaderboard-container { padding: 0 20px; }
-        .leaderboard-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 13px; }
-        .rank { width: 24px; color: var(--text-muted); font-weight: 500; }
-        .drone-info { flex-grow: 1; display: flex; align-items: center; gap: 8px; font-weight: 500;}
-        .drone-color { width: 8px; height: 8px; border-radius: 2px; }
-        .time { font-variant-numeric: tabular-nums; color: var(--text-muted); }
-
-        #commentary-box { flex-grow: 1; overflow-y: auto; margin-top: 10px; padding: 0 20px 20px 20px; border-top: 1px solid var(--border-color); background: #fff; }
-        .comm-entry { margin-top: 12px; font-size: 13px; line-height: 1.5; color: var(--text-main); display: flex; gap: 8px; }
-        .comm-time { color: var(--text-muted); font-size: 11px; min-width: 45px; }
-        .comm-text { color: var(--text-main); }
-        .comm-highlight { font-weight: 600; color: var(--success-color); }
-
-        #map { flex-grow: 1; height: 100%; background: #EAEAEA; z-index: 1;}
-        #countdown-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); backdrop-filter: blur(4px); z-index: 9999; display: none; align-items: center; justify-content: center; font-family: var(--font-stack); font-size: 120px; font-weight: 800; color: var(--text-main); }
-        .leaflet-bar { border: none !important; box-shadow: 0 1px 4px rgba(0,0,0,0.1) !important; }
-        .leaflet-bar a { border-radius: 4px !important; color: var(--text-main) !important; }
-
-        /* --- NEW: Track Selector Modal --- */
-        #track-modal {
-            position: absolute; top: 60px; left: 20px; width: 320px;
-            background: white; border: 1px solid var(--border-color);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 8px;
-            display: none; flex-direction: column; z-index: 100;
-        }
-        .modal-header { padding: 12px 16px; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center;}
-        .close-btn { cursor: pointer; color: var(--text-muted); font-size: 16px; }
-        .track-list { max-height: 300px; overflow-y: auto; padding: 8px; }
-        .track-item {
-            padding: 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
-            font-size: 13px; color: var(--text-main);
-        }
-        .track-item:hover { background: var(--sidebar-bg); }
-        .track-icon { margin-right: 10px; width: 20px; height: 20px; background: #eee; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #666; }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -94,6 +28,7 @@
     <div class="section-title">Controls</div>
     <div class="controls-grid">
         <button class="btn-primary" onclick="prepareRace()">Start Race</button>
+
         <button onclick="clearMap()">Reset</button>
 
         <button onclick="toggleTrackModal()">
@@ -115,6 +50,21 @@
         </div>
     </div>
 
+    <div class="leaderboard-container" id="leaderboard-body">
+        <div style="padding: 10px 0; color: #999; font-size: 13px; text-align: center; font-style: italic;">
+            Waiting for racers...
+        </div>
+    </div>
+
+    <div class="section-title" id="analysis-title" style="display:none; margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px;">
+        Race Analysis
+        <span style="font-size: 10px; color: #999; font-weight: normal; margin-left: auto;">Select to view paths</span>
+    </div>
+    <div id="path-controls" style="display:none; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+    </div>
+
+    <div class="section-title" style="margin-top: auto;">Commentary Feed</div>
+
     <div class="section-title" style="margin-top: auto;">Commentary Feed</div>
     <div id="commentary-box">
         <div class="comm-entry">
@@ -130,280 +80,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
-<script>
-    // --- MAP INITIALIZATION ---
-    const map = L.map('map', { zoomControl: false }).setView([55.944, -3.188], 15);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        maxZoom: 19
-    }).addTo(map);
+<script src="script.js"></script>
 
-    const drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
-
-    const drawControl = new L.Control.Draw({
-        draw: {
-            polygon: { shapeOptions: { color: '#37352F', weight: 2, fillOpacity: 0.1 } },
-            marker: true, polyline: false, circle: false, rectangle: false, circlemarker: false
-        },
-        edit: { featureGroup: drawnItems }
-    });
-    map.addControl(drawControl);
-
-    // --- STATE VARIABLES ---
-    let trackPolygon = null;
-    let startPoint = null;
-    let endPoint = null;
-    let raceInterval = null;
-    let startTime = 0;
-    let activeDrones = 0;
-    let finishedDrones = [];
-
-    // --- NEW: Track Preset Logic ---
-    async function toggleTrackModal() {
-        const modal = document.getElementById('track-modal');
-        if (modal.style.display === 'flex') {
-            modal.style.display = 'none';
-            return;
-        }
-
-        modal.style.display = 'flex';
-        const list = document.getElementById('track-list-content');
-        list.innerHTML = '<div style="padding:10px; color:#999;">Fetching tracks...</div>';
-
-        try {
-            const response = await fetch('http://localhost:8080/api/v1/track/presets');
-            const tracks = await response.json();
-
-            list.innerHTML = '';
-            if (Object.keys(tracks).length === 0) {
-                list.innerHTML = '<div style="padding:10px;">No tracks found.</div>';
-                return;
-            }
-
-            for (const [name, geoJson] of Object.entries(tracks)) {
-                const item = document.createElement('div');
-                item.className = 'track-item';
-                item.innerHTML = `
-                    <div style="display:flex; align-items:center;">
-                        <div class="track-icon">🏁</div>
-                        <strong>${name}</strong>
-                    </div>
-                    <span style="color:#999;">Select →</span>
-                `;
-                item.onclick = () => loadPresetTrack(name, geoJson);
-                list.appendChild(item);
-            }
-        } catch (e) {
-            list.innerHTML = '<div style="color:red; padding:10px;">Error fetching tracks.</div>';
-        }
-    }
-
-    function loadPresetTrack(name, geoJson) {
-        if (trackPolygon) drawnItems.removeLayer(trackPolygon);
-
-        // Fix: Handle the nested structure of GeoJSON Polygons.
-        // We map over each "ring" (usually just one), and then map over each point in that ring.
-        const latLngs = geoJson.coordinates.map(ring =>
-            ring.map(coord => [coord[1], coord[0]]) // Swap [lng, lat] to [lat, lng]
-        );
-
-        // Pass the corrected array of rings to Leaflet
-        trackPolygon = L.polygon(latLngs, { color: '#37352F', weight: 2, fillOpacity: 0.1 }).addTo(drawnItems);
-
-        map.fitBounds(trackPolygon.getBounds());
-
-        document.getElementById('track-modal').style.display = 'none';
-        logCommentary(`Loaded track: ${name}`, true);
-        logCommentary("Please place Start/End markers manually.");
-    }
-
-    // --- LEAFLET EVENTS ---
-    map.on(L.Draw.Event.CREATED, function (e) {
-        const layer = e.layer;
-        drawnItems.addLayer(layer);
-        if (e.layerType === 'polygon') {
-            trackPolygon = layer;
-            logCommentary("Track boundary defined.");
-        } else if (e.layerType === 'marker') {
-            if (!startPoint) {
-                startPoint = layer.getLatLng();
-                logCommentary("Start line set.");
-            } else if (!endPoint) {
-                endPoint = layer.getLatLng();
-                logCommentary("Finish line set.");
-            }
-        }
-    });
-
-    // --- RACE LOGIC ---
-    async function prepareRace() {
-        if (!trackPolygon || !startPoint || !endPoint) {
-            alert("Setup incomplete: Track polygon + 2 Markers required.");
-            return;
-        }
-        updateStatus("Calculating...", "#E0AC00");
-
-        // CHANGE 1: Get the full GeoJSON geometry directly from Leaflet
-        // This automatically handles Polygons, Holes, and Coordinate Swaps
-        const geoJsonGeometry = trackPolygon.toGeoJSON().geometry;
-
-        const payload = {
-            startLocation: { lat: startPoint.lat, lng: startPoint.lng },
-            endLocation: { lat: endPoint.lat, lng: endPoint.lng },
-            LLMInput: geoJsonGeometry // Send the full Polygon object
-        };
-
-        try {
-            const response = await fetch('http://localhost:8080/api/v1/race/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if(!response.ok) throw new Error("Server Error");
-            const raceData = await response.json();
-            startCountdown(raceData);
-        } catch (error) {
-            console.error(error);
-            logCommentary("Calculation failed: " + error.message);
-            updateStatus("Error", "#EB5757");
-        }
-    }
-
-    function startCountdown(raceData) {
-        const overlay = document.getElementById('countdown-overlay');
-        overlay.style.display = 'flex';
-        let count = 3;
-        overlay.innerText = count;
-        const interval = setInterval(() => {
-            count--;
-            if (count > 0) overlay.innerText = count;
-            else if (count === 0) overlay.innerText = "GO";
-            else {
-                clearInterval(interval);
-                overlay.style.display = 'none';
-                runRaceSimulation(raceData);
-            }
-        }, 1000);
-    }
-
-    function runRaceSimulation(raceData) {
-        updateStatus("Racing...", "#27AE60");
-        logCommentary("Lights out and away we go!", true);
-        document.getElementById('leaderboard-body').innerHTML = "";
-        finishedDrones = [];
-        startTime = Date.now();
-        raceInterval = setInterval(updateTimerDisplay, 37);
-
-        const results = raceData.droneResults;
-        activeDrones = results.length;
-
-        results.forEach(drone => {
-            if(!drone.path || !drone.path.coordinates || drone.path.coordinates.length === 0) {
-                activeDrones--; return;
-            }
-            const droneIcon = L.divIcon({
-                className: 'drone-marker',
-                html: `<div style="background:${drone.color}; width:10px; height:10px; border-radius:50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>`
-            });
-            const marker = L.marker([raceData.startLocation.lat, raceData.startLocation.lng], {icon: droneIcon}).addTo(map);
-            const pathCoords = drone.path.coordinates; // [lng, lat]
-
-            let step = 0;
-            const droneInterval = setInterval(() => {
-                if (step >= pathCoords.length) {
-                    clearInterval(droneInterval);
-                    finishDrone(drone, Date.now() - startTime);
-                    return;
-                }
-                const [lng, lat] = pathCoords[step];
-                marker.setLatLng([lat, lng]);
-                step++;
-            }, 50);
-        });
-    }
-
-    function finishDrone(drone, finalTimeMs) {
-        activeDrones--;
-        const timeStr = formatTime(finalTimeMs);
-        finishedDrones.push({ ...drone, timeStr, rawTime: finalTimeMs });
-        finishedDrones.sort((a,b) => a.rawTime - b.rawTime);
-        renderLeaderboard();
-        logCommentary(`${drone.algorithmName} finishes in ${timeStr}`);
-        if (activeDrones <= 0) {
-            clearInterval(raceInterval);
-            updateStatus("Finished", "#37352F");
-            logCommentary("Race complete.", true);
-        }
-    }
-
-    function renderLeaderboard() {
-        const container = document.getElementById('leaderboard-body');
-        container.innerHTML = "";
-        finishedDrones.forEach((d, index) => {
-            const div = document.createElement('div');
-            div.className = 'leaderboard-row';
-            div.innerHTML = `<div class="rank">${index + 1}</div><div class="drone-info"><div class="drone-color" style="background:${d.color}"></div>${d.algorithmName}</div><div class="time">${d.timeStr}</div>`;
-            container.appendChild(div);
-        });
-    }
-
-    function updateTimerDisplay() {
-        document.getElementById('race-timer').innerText = formatTime(Date.now() - startTime);
-    }
-
-    function formatTime(ms) {
-        const min = Math.floor(ms / 60000);
-        const sec = Math.floor((ms % 60000) / 1000);
-        const centi = Math.floor((ms % 1000) / 10);
-        return `${pad(min)}:${pad(sec)}.${pad(centi)}`;
-    }
-    function pad(num) { return num.toString().padStart(2, '0'); }
-
-    function logCommentary(text, highlight = false) {
-        const box = document.getElementById('commentary-box');
-        const entry = document.createElement('div');
-        entry.className = 'comm-entry';
-        const timeLabel = startTime > 0 ? formatTime(Date.now() - startTime) : "PRE";
-        entry.innerHTML = `<span class="comm-time">${timeLabel}</span><span class="comm-text ${highlight ? 'comm-highlight' : ''}">${text}</span>`;
-        box.prepend(entry);
-    }
-
-    function updateStatus(text, color) {
-        document.getElementById('race-status-text').childNodes[1].textContent = " " + text;
-        document.getElementById('status-dot').style.background = color;
-    }
-
-    function clearMap() {
-        drawnItems.clearLayers();
-        trackPolygon = null; startPoint = null; endPoint = null;
-        document.getElementById('leaderboard-body').innerHTML = '<div style="padding:10px 0; color:#999; font-size:13px; text-align:center; font-style:italic;">Waiting...</div>';
-        document.getElementById('race-timer').innerText = "00:00.00";
-        updateStatus("Ready", "#ccc");
-        logCommentary("Map cleared.");
-    }
-
-    async function uploadTrack(input) {
-        if (!input.files || !input.files[0]) return;
-        const formData = new FormData();
-        formData.append('file', input.files[0]);
-        logCommentary("Processing image...");
-        try {
-            const response = await fetch('http://localhost:8080/api/v1/track/upload', { method: 'POST', body: formData });
-            if (!response.ok) throw new Error("Upload failed");
-            const geoJson = await response.json();
-            if (trackPolygon) drawnItems.removeLayer(trackPolygon);
-            const latLngs = geoJson.coordinates.map(c => [c[1], c[0]]);
-            trackPolygon = L.polygon(latLngs, { color: '#37352F', weight: 2 }).addTo(drawnItems);
-            map.fitBounds(trackPolygon.getBounds());
-            logCommentary("Track generated from image.", true);
-            input.value = '';
-        } catch (error) {
-            console.error(error);
-            logCommentary("Image failed.");
-        }
-    }
-</script>
 </body>
 </html>

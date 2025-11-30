@@ -13,6 +13,13 @@ public class RacerProfile {
     // SPEED/AGILITY PARAMETERS
     private double turningPenalty; // cost added per degree of turn
 
+    // safety distance from obstacles (rookie would be larger than pro)
+    private double safetyMargin;
+
+    private double baseSpeed; // meters per tick
+
+    private double dragFactor; // how much is lost per degree of turn
+
     // PHYSICS PROPERTIES
     private double moveDistance;    // e.g., 0.00015 (Standard) vs 0.00030 (Fast)
 

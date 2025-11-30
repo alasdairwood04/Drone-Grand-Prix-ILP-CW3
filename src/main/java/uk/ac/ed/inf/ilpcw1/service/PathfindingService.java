@@ -23,6 +23,8 @@ public class PathfindingService {
             180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5
     };
 
+    public record PathResult(List<LngLat> path, double totalTime) {}
+
     private final RestService restService;
 
     @Autowired
@@ -33,7 +35,7 @@ public class PathfindingService {
     /**
      * Backward compatibility method.
      */
-    public List<LngLat> findPath(LngLat start, LngLat goal, List<RestrictedArea> allowedAreas) {
+    public PathResult findPath(LngLat start, LngLat goal, List<RestrictedArea> allowedAreas) {
         RacerProfile defaultProfile = RacerProfile.builder()
                 .name("Standard Drone")
                 .strategy(SearchStrategy.ASTAR)
@@ -56,11 +58,11 @@ public class PathfindingService {
      * @param profile         Racer configuration (strategy, speed, agility, weight)
      * @return List of positions forming the path (including start, excluding goal)
      */
-    public List<LngLat> findPath(LngLat start, LngLat goal, List<RestrictedArea> allowedAreas, RacerProfile profile) {
+    public PathResult findPath(LngLat start, LngLat goal, List<RestrictedArea> allowedAreas, RacerProfile profile) {
         logger.info("Finding path from {} to {} using profile: {}", start, goal, profile.getName());
 
         if (restService.isCloseTo(start, goal)) {
-            return new ArrayList<>(List.of(start));
+            return new PathResult(Collections.emptyList(), 0.0);
         }
 
         // Priority queue ordered by f-score
@@ -82,7 +84,7 @@ public class PathfindingService {
         allNodes.put(startKey, startNode);
 
         int iterations = 0;
-        final int MAX_ITERATIONS = 150000;
+        final int MAX_ITERATIONS = 1000000;
 
         // Convert RestrictedAreas to Regions once for efficiency
         List<Region> boundaryRegions = allowedAreas.stream()
@@ -109,7 +111,7 @@ public class PathfindingService {
             if (restService.isCloseTo(current.position, goal)) {
                 logger.info("{} found path in {} iterations with {} moves",
                         profile.getName(), iterations, current.g);
-                return reconstructPath(current);
+                return new PathResult(reconstructPath(current), current.g); // Return path and total time (g)
             }
 
             // Explore Neighbors using DRONE-SPECIFIC flight angles
@@ -119,23 +121,37 @@ public class PathfindingService {
                 CoordinateKey nextKey = CoordinateKey.fromLngLat(nextPos);
 
                 // BOUNDARY CHECK: Ensure we DO NOT leave the allowed region
-                if (leavesAllowedRegions(current.position, nextPos, boundaryRegions)) {
+                if (leavesAllowedRegions(current.position, nextPos, boundaryRegions, profile.getSafetyMargin())) {
                     continue;
                 }
 
-                double moveCost = 1.0;
-
-                // turning penalty calculation
-                double turnCost = 0.0;
+                // 2. PHYSICS CALCULATION: Calculate Turn Angle
+                double angleDiff = 0.0;
                 if (current.parent != null) {
-                    double angleDiff = Math.abs(angle - current.arrivalAngle);
+                    angleDiff = Math.abs(angle - current.arrivalAngle);
                     if (angleDiff > 180) {
-                        angleDiff = 360 - angleDiff; // Normalize to [0, 180]
+                        angleDiff = 360 - angleDiff;
                     }
-                    turnCost = angleDiff * profile.getTurningPenalty();}
+                }
 
-                // Cost Calculation (1 move = cost 1)
-                double tentativeG = current.g + moveCost + turnCost;
+                // 3. PHYSICS CALCULATION: Dynamic Speed (Cornering Logic)
+                // Reduce speed based on how sharp the turn is
+                double speedLoss = angleDiff * profile.getDragFactor();
+
+                // Effective speed = Base Speed * (100% - Drag Loss)
+                double currentSpeed = profile.getBaseSpeed() * (1.0 - speedLoss);
+
+                // Clamp speed: Don't let speed drop below 10% of base (prevents stall/infinite cost)
+                currentSpeed = Math.max(currentSpeed, profile.getBaseSpeed() * 0.1);
+
+                // 4. CALCULATE COST (G-SCORE) AS TIME
+                // Time = Distance / Speed
+                double stepDistance = profile.getMoveDistance();
+                double timeStep = stepDistance / currentSpeed;
+
+                // This effectively replaces 'moveCost' and 'turnCost'
+                double tentativeG = current.g + timeStep + profile.getTurningPenalty() * (angleDiff / 180.0); // Normalize turn penalty
+
                 Node existingNode = allNodes.get(nextKey);
 
                 // If we found a cheaper path to this neighbor (or haven't seen it yet)
@@ -160,7 +176,7 @@ public class PathfindingService {
      * Checks if the move from pos1 to pos2 exits any of the allowed regions.
      * Returns TRUE if the move is INVALID (i.e., it leaves the region).
      */
-    private boolean leavesAllowedRegions(LngLat pos1, LngLat pos2, List<Region> allowedRegions) {
+    private boolean leavesAllowedRegions(LngLat pos1, LngLat pos2, List<Region> allowedRegions, double safetyMargin) {
         // Quick check: if no allowed regions, any move is invalid
         if (allowedRegions.isEmpty()) return false;
 
@@ -168,6 +184,12 @@ public class PathfindingService {
             // Check if points are spatially outside the region
             if (restService.isOutsideRegion(pos1, region) || restService.isOutsideRegion(pos2, region)) {
                 return true; // We are outside the allowed boundary
+            }
+
+            // 2. NEW: Safety Margin Check (The "Apex" Logic)
+            // If the drone is valid but too close to the wall for this driver's skill level
+            if (getDistanceToNearestWall(pos1, allowedRegions) < safetyMargin) {
+                return true; // Treat this space as "solid wall" for this specific racer
             }
 
             // Check if the path line crosses a boundary edge (prevents skipping over corners)
@@ -185,6 +207,67 @@ public class PathfindingService {
         return false;
     }
 
+    /**
+     * Calculates the minimum distance from a given point to the nearest boundary wall
+     * of any allowed region. This simulates the "Apex" proximity.
+     *
+     * @param pos            The position to check.
+     * @param allowedRegions The list of regions defining the track/allowed area.
+     * @return The distance to the nearest wall in coordinate units (degrees).
+     */
+    private double getDistanceToNearestWall(LngLat pos, List<Region> allowedRegions) {
+        double minDistance = Double.MAX_VALUE;
+
+        for (Region region : allowedRegions) {
+            List<LngLat> vertices = region.getVertices();
+            if (vertices == null || vertices.size() < 2) continue;
+
+            // Iterate over every edge of the polygon
+            for (int i = 0; i < vertices.size(); i++) {
+                LngLat p1 = vertices.get(i);
+                // Use modulo to wrap around and check the closing edge (last point -> first point)
+                LngLat p2 = vertices.get((i + 1) % vertices.size());
+
+                double dist = distancePointToSegment(pos, p1, p2);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                }
+            }
+        }
+        return minDistance;
+    }
+
+    /**
+     * Helper to find the shortest distance from point P to the line segment VW.
+     */
+    private double distancePointToSegment(LngLat p, LngLat v, LngLat w) {
+        double x = p.getLongitude();
+        double y = p.getLatitude();
+        double x1 = v.getLongitude();
+        double y1 = v.getLatitude();
+        double x2 = w.getLongitude();
+        double y2 = w.getLatitude();
+
+        // Length squared of the segment
+        double l2 = (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+
+        // If segment is a single point (length 0), just distance to that point
+        if (l2 == 0) return Math.sqrt((x - x1) * (x - x1) + (y - y1) * (y - y1));
+
+        // Calculate projection factor t = dot(p-v, w-v) / |w-v|^2
+        double t = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / l2;
+
+        // Clamp t to the segment range [0, 1]
+        // t=0 means the closest point is v, t=1 means the closest point is w
+        t = Math.max(0, Math.min(1, t));
+
+        // Find the coordinates of the closest point on the segment
+        double projX = x1 + t * (x2 - x1);
+        double projY = y1 + t * (y2 - y1);
+
+        // Return Euclidean distance from p to the projection
+        return Math.sqrt((x - projX) * (x - projX) + (y - projY) * (y - projY));
+    }
     private double calculateScore(double g, double h, RacerProfile profile) {
         return switch (profile.getStrategy()) {
             case ASTAR -> g + h;
@@ -196,17 +279,40 @@ public class PathfindingService {
     }
 
     private double heuristic(LngLat current, LngLat goal, RacerProfile profile) {
+        // Basic Distance
         double dx = Math.abs(current.getLongitude() - goal.getLongitude());
         double dy = Math.abs(current.getLatitude() - goal.getLatitude());
-        double moveDist = profile.getMoveDistance();
+
+        double maxSpeed = profile.getBaseSpeed();
+
+        // Prevent division by zero if baseSpeed isn't set
+        if (maxSpeed <= 0) maxSpeed = 0.00015; // fallback
 
         return switch (profile.getHeuristicType()) {
-            case MANHATTAN -> (dx + dy) / moveDist;
-            case CHEBYSHEV -> Math.max(dx, dy) / moveDist;
-            case EUCLIDEAN -> restService.calculateDistance(current, goal) / moveDist;
+            // Time = (dx + dy) / Speed
+            case MANHATTAN -> (dx + dy) / maxSpeed;
+
+            // Time = max(dx, dy) / Speed
+            case CHEBYSHEV -> Math.max(dx, dy) / maxSpeed;
+
+            // Time = Distance / Speed
+            case EUCLIDEAN -> {
+                double dist = restService.calculateDistance(current, goal);
+                double h = dist / maxSpeed;
+                // Optional Tie-breaker: prefer straight lines
+                yield h * 1.0001; // Slightly favor nodes that are more direct
+            }
+
+            // Time = Octile Distance / Speed
+            case OCTILE -> {
+                double F = Math.sqrt(2) - 1.0;
+                double dist = (dx + dy) + (F * Math.min(dx, dy));
+                yield dist / maxSpeed;
+            }
+            // Fallback for types not yet handled
+            default -> restService.calculateDistance(current, goal) / maxSpeed;
         };
     }
-
     private List<LngLat> reconstructPath(Node goalNode) {
         List<LngLat> path = new ArrayList<>();
         Node current = goalNode;
