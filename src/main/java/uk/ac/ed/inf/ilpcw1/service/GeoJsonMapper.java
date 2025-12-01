@@ -30,7 +30,6 @@ public class GeoJsonMapper {
 
         // 3. Add Track Obstacles (Grey Polygon/LineString)
         if (raceData.getTrackObstacles() != null) {
-            // Assuming trackObstacles is currently a GeoJsonLineString in your DTO
             // We convert it to a Feature
             features.add(GeoJsonFeature.builder()
                     .geometry(raceData.getTrackObstacles())
@@ -49,15 +48,13 @@ public class GeoJsonMapper {
         if (raceData.getDroneResults() != null) {
             for (DroneRaceResult result : raceData.getDroneResults()) {
                 // --- CHANGE START ---
-                // If the drone failed to find a path (crashed/stuck), the coordinates will be empty.
-                // We skip adding this feature so it doesn't clutter or break the GeoJSON map.
                 if (result.getPath() == null ||
                         result.getPath().getCoordinates() == null ||
                         result.getPath().getCoordinates().isEmpty()) {
                     continue;
                 }
-                // --- CHANGE END ---
 
+                // --- CHANGE END ---
                 Map<String, Object> props = new HashMap<>();
                 props.put("algorithm", result.getAlgorithmName());
                 props.put("moveCount", result.getMoveCount());

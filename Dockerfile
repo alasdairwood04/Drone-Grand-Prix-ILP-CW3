@@ -1,37 +1,48 @@
+# ===============================
+# Stage 1: Build the Application
+# ===============================
 FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
+
+# Copy pom.xml and download dependencies first (caching step to speed up re-builds)
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
+
+# Copy the full source code (includes src/main/resources/static for the frontend)
 COPY src ./src
+
+# Build the application (skipping tests to avoid environment issues during build)
 RUN mvn clean package -DskipTests
 
+# ===============================
+# Stage 2: Run the Application
+# ===============================
+# Using a Debian-based image (Ubuntu) instead of Alpine for better Python compatibility
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-# 1. Install Python and "python-is-python3" to ensure the 'python' command works
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-dev \
-      python-is-python3 \
-      build-essential libproj-dev proj-bin \
-      libgeos-dev libgl1-mesa-glx ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+# Install Python 3 and the specific libraries required by your scripts
+# python3-opencv -> cv2
+# python3-shapely -> shapely
+# python3-pyproj -> pyproj
+# python3-numpy -> numpy
+# python-is-python3 -> ensures the command 'python' works for ProcessBuilder
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-numpy \
+    python3-shapely \
+    python3-pyproj \
+    python3-opencv \
+    python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages
-RUN pip3 install --no-cache-dir \
-      numpy \
-      opencv-python-headless \
-      shapely \
-      pyproj \
-    cv2 \
+# Copy the built JAR file from the builder stage
+# Using *.jar handles the artifactId name change automatically
+COPY --from=builder /app/target/*.jar app.jar
 
-
-# 2. FIXED: Copy the correct jar name (matches artifactId in pom.xml)
-COPY --from=builder /app/target/Drone-Grand-Prix-ILP-CW3-0.0.1-SNAPSHOT.jar app.jar
-
-# Note: The Java code loads the script from the classpath (inside the JAR),
-# so copying it to /app/scripts/ is optional, but good for debugging.
-COPY src/main/resources/scripts/track_processor.py /app/scripts/track_processor.py
-
+# Expose the application port
 EXPOSE 8080
+
+# Run the app
 ENTRYPOINT ["java", "-jar", "app.jar"]

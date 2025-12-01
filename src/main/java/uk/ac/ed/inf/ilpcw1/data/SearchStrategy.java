@@ -4,10 +4,10 @@ import lombok.Getter;
 
 @Getter
 public enum SearchStrategy {
-    ASTAR("Optimal Ace"),       // f = g + h
-    GREEDY("Gambler"),          // f = h (ignores cost so far)
-    DIJKSTRA("Bob"),    // f = g (ignores heuristic)
-    WEIGHTED_ASTAR("The Speedster"); // New Strategy
+    ASTAR("A Star"),       // f = g + h
+    GREEDY("Greedy"),          // f = h (ignores cost so far)
+    DIJKSTRA("Dijkstra"),    // f = g (ignores heuristic)
+    WEIGHTED_ASTAR("W A Star"); // f = g + w*h
 
     private final String personalityName;
 

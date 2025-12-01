@@ -36,7 +36,6 @@ public class TrackController {
         }
     }
 
-    // --- NEW ENDPOINT ---
     @GetMapping("/presets")
     public ResponseEntity<Map<String, GeoJsonPolygon>> getTrackPresets() {
         return ResponseEntity.ok(trackService.getPreloadedTracks());

@@ -7,7 +7,7 @@ import sys
 # Center: -3.192, 55.942
 
 # Longitude: -3.192 +/- 0.025 (Wider range = Bigger horizontal track)
-MIN_LNG, MAX_LNG = -3.21, -3.170
+MIN_LNG, MAX_LNG = -3.19, -3.170
 
 # Latitude:  55.942 +/- 0.015 (Higher range = Bigger vertical track)
 MIN_LAT, MAX_LAT = 55.940, 55.945

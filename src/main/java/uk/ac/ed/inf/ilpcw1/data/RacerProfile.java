@@ -8,7 +8,7 @@ import lombok.Data;
 public class RacerProfile {
     private String name;
     private String color;
-    private SearchStrategy strategy; // e.g., A*, Greedy, Dijkstra
+    private SearchStrategy strategy;
 
     // SPEED/AGILITY PARAMETERS
     private double turningPenalty; // cost added per degree of turn
@@ -20,14 +20,12 @@ public class RacerProfile {
 
     private double dragFactor; // how much is lost per degree of turn
 
-    // PHYSICS PROPERTIES
-    private double moveDistance;    // e.g., 0.00015 (Standard) vs 0.00030 (Fast)
+    private double moveDistance;
 
-    // allowed flight directions (e.g., 16 standard, or just 4 for a "rook" movement)
+    // allowed flight directions
     private double[] flightAngles;
 
 
-    // changing heuristic weight to modify A* behavior
     private double heuristicWeight;
 
     @Builder.Default

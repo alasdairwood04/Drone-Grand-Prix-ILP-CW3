@@ -101,7 +101,7 @@ public class PathfindingService {
             Node current = priorityQueue.poll();
             CoordinateKey currentKey = CoordinateKey.fromLngLat(current.position);
 
-            // Lazy Deletion: If we found a better path to this node while it was waiting, skip it.
+            // Lazy Deletion: If found a better path to this node while it was waiting, skip it.
             Node bestKnown = allNodes.get(currentKey);
             if (bestKnown != null && bestKnown.g < current.g) {
                 continue;
@@ -114,13 +114,12 @@ public class PathfindingService {
                 return new PathResult(reconstructPath(current), current.g); // Return path and total time (g)
             }
 
-            // Explore Neighbors using DRONE-SPECIFIC flight angles
+            // Explore Neighbors
             for (double angle : profile.getFlightAngles()) {
-                // Use DRONE-SPECIFIC move distance (speed)
                 LngLat nextPos = restService.nextPosition(current.position, angle, profile.getMoveDistance());
                 CoordinateKey nextKey = CoordinateKey.fromLngLat(nextPos);
 
-                // BOUNDARY CHECK: Ensure we DO NOT leave the allowed region
+                // BOUNDARY CHECK: Ensure we dont leave the allowed region
                 if (leavesAllowedRegions(current.position, nextPos, boundaryRegions, profile.getSafetyMargin())) {
                     continue;
                 }
@@ -134,7 +133,7 @@ public class PathfindingService {
                     }
                 }
 
-                // 3. PHYSICS CALCULATION: Dynamic Speed (Cornering Logic)
+                // 3. PHYSICS CALCULATION: Dynamic Speed
                 // Reduce speed based on how sharp the turn is
                 double speedLoss = angleDiff * profile.getDragFactor();
 
@@ -154,7 +153,7 @@ public class PathfindingService {
 
                 Node existingNode = allNodes.get(nextKey);
 
-                // If we found a cheaper path to this neighbor (or haven't seen it yet)
+                // If found a cheaper path to this neighbor (or haven't seen it yet)
                 if (existingNode == null || tentativeG < existingNode.g) {
                     double h = heuristic(nextPos, goal, profile);
                     double f = calculateScore(tentativeG, h, profile);
@@ -186,7 +185,6 @@ public class PathfindingService {
                 return true; // We are outside the allowed boundary
             }
 
-            // 2. NEW: Safety Margin Check (The "Apex" Logic)
             // If the drone is valid but too close to the wall for this driver's skill level
             if (getDistanceToNearestWall(pos1, allowedRegions) < safetyMargin) {
                 return true; // Treat this space as "solid wall" for this specific racer
@@ -299,7 +297,7 @@ public class PathfindingService {
             case EUCLIDEAN -> {
                 double dist = restService.calculateDistance(current, goal);
                 double h = dist / maxSpeed;
-                // Optional Tie-breaker: prefer straight lines
+                // Tie-breaker: prefer straight lines
                 yield h * 1.0001; // Slightly favor nodes that are more direct
             }
 

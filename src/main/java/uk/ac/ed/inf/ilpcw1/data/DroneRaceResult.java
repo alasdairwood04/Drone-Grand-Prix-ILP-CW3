@@ -17,7 +17,7 @@ import java.util.List;
 @Builder
 public class DroneRaceResult {
     @JsonProperty("algorithmName")
-    private String algorithmName;   // e.g., "Optimal Ace (A*)"
+    private String algorithmName;
 
     @JsonProperty("moveCount")
     private int moveCount;

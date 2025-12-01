@@ -105,35 +105,35 @@ public class RacerService {
         List<RacerProfile> racers = new ArrayList<>();
 
         // ==============  Experiment A: The Heuristic Battle ==============
-//        racers.add(RacerProfile.builder()
-//                .name("Geometric Drone (Naive)")
-//                .color("#0000FF") // Blue
-//                .strategy(SearchStrategy.ASTAR)
-//                .heuristicType(HeuristicType.EUCLIDEAN)
-//                .moveDistance(0.00015)       // Standard step size
-//                .flightAngles(COARSE_STEERING) // Standard 16-point compass
-//                // --- PHYSICS DISABLED ---
-//                .baseSpeed(0.00015)          // Constant speed
-//                .dragFactor(0.0)             // 0.0 = No speed lost in corners
-//                .turningPenalty(0.0)         // 0.0 = No time penalty for turning
-//                .safetyMargin(0.00001)       // Very small margin (allows hugging the wall)
-//                .build());
-//
-//        // DRONE B: The "Physics-Aware" Racer
-//        racers.add(RacerProfile.builder()
-//                .name("Physics Drone (Realistic)")
-//                .color("#FF0000") // Red
-//                .strategy(SearchStrategy.ASTAR)
-//                .heuristicType(HeuristicType.EUCLIDEAN)
-//                .moveDistance(0.00015)       // Same step size
-//                .flightAngles(COARSE_STEERING)
-//                // ^ USE FINE STEERING (32 points) - Crucial for smooth curves!
-//                // --- PHYSICS ENABLED ---
-//                .baseSpeed(0.00030)          // Higher base speed makes momentum more valuable
-//                .dragFactor(0.015)           // HIGH DRAG: 0.015 * 90 deg = 1.35 (Speed crashes to min)
-//                .turningPenalty(1.5)         // Extra penalty for the "effort" of turning
-//                .safetyMargin(0.00001)       // Same margin (fair comparison)
-//                .build());
+        racers.add(RacerProfile.builder()
+                .name("Geometric Drone (Naive)")
+                .color("#0000FF") // Blue
+                .strategy(SearchStrategy.ASTAR)
+                .heuristicType(HeuristicType.EUCLIDEAN)
+                .moveDistance(BASE_MOVE)       // Standard step size
+                .flightAngles(FINE_STEERING) // Standard 16-point compass
+                // --- PHYSICS DISABLED ---
+                .baseSpeed(0.00015)          // Constant speed
+                .dragFactor(0.0)             // 0.0 = No speed lost in corners
+                .turningPenalty(0.0)         // 0.0 = No time penalty for turning
+                .safetyMargin(0.00001)       // Very small margin (allows hugging the wall)
+                .build());
+
+        // DRONE B: The "Physics-Aware" Racer
+        racers.add(RacerProfile.builder()
+                .name("Physics Drone (Realistic)")
+                .color("#FF0000") // Red
+                .strategy(SearchStrategy.ASTAR)
+                .heuristicType(HeuristicType.EUCLIDEAN)
+                .moveDistance(BASE_MOVE)       // Same step size
+                .flightAngles(FINE_STEERING)
+                // ^ USE FINE STEERING (32 points) - Crucial for smooth curves!
+                // --- PHYSICS ENABLED ---
+                .baseSpeed(0.00030)          // Higher base speed makes momentum more valuable
+                .dragFactor(0.015)           // HIGH DRAG: 0.015 * 90 deg = 1.35 (Speed crashes to min)
+                .turningPenalty(1.5)         // Extra penalty for the "effort" of turning
+                .safetyMargin(0.00001)       // Same margin (fair comparison)
+                .build());
 
         // ==============  Experiment B: Contextual Adaptation (1. fast speed/slow in corners 2. average speed/excellent cornering) ==============
 
@@ -147,12 +147,12 @@ public class RacerService {
 //                .color("#ff1e41") // Red
 //                .strategy(SearchStrategy.ASTAR)
 //                .heuristicType(HeuristicType.EUCLIDEAN)
-//                .moveDistance(FINE_MOVE)
+//                .moveDistance(BASE_MOVE)
 //                .flightAngles(COARSE_STEERING) // Use Fine Steering (32) if you have it, otherwise Coarse is ok
 //                // --- PHYSICS CONFIG ---
-//                .baseSpeed(0.00055)     // ~220 km/h (Rocket on straights)
-//                .dragFactor(0.02)       // HIGH DRAG: Turning 90 deg loses 180% speed (stops dead)
-//                .turningPenalty(2.0)    // Unstable in corners
+//                .baseSpeed(0.00055)     // ~220 km/h (Very Fast on straights)
+//                .dragFactor(0.025)       // HIGH DRAG: Turning 90 deg loses 180% speed (stops dead)
+//                .turningPenalty(2)    // Unstable in corners
 //                .safetyMargin(0.00001)
 //                .build());
 //
@@ -164,10 +164,10 @@ public class RacerService {
 //                .color("#1E41FF") // Blue
 //                .strategy(SearchStrategy.ASTAR)
 //                .heuristicType(HeuristicType.EUCLIDEAN)
-//                .moveDistance(FINE_MOVE)
+//                .moveDistance(BASE_MOVE)
 //                .flightAngles(COARSE_STEERING)
 //                // --- PHYSICS CONFIG ---
-//                .baseSpeed(0.00035)     // ~140 km/h (Slow on straights)
+//                .baseSpeed(0.00035)     // Moderate Speed (~140 km/h)
 //                .dragFactor(0.002)      // LOW DRAG: Turning 90 deg loses only 18% speed
 //                .turningPenalty(0.0)    // Agile (No time lost to stability)
 //                .safetyMargin(0.00001)
@@ -177,41 +177,41 @@ public class RacerService {
         // ==============  Experiment C: Comparing veteran and noob drivers in same cars ==============
 
 
-        // RACER 2: THE ROOKIE (Scared)
-        // Strategy: Nervous. Stays well clear of any walls.
-        // Result: Forced to take a wider radius, increasing total path distance.
-        racers.add(RacerProfile.builder()
-                .name("The Rookie (Safe)")
-                .color("#FFA500") // Orange
-                .strategy(SearchStrategy.ASTAR)
-                .heuristicType(HeuristicType.EUCLIDEAN)
-                .moveDistance(0.00015)
-                .flightAngles(COARSE_STEERING)
-                // --- PHYSICS CONFIG (Identical to Pro) ---
-                .baseSpeed(0.00025)
-                .dragFactor(0.01)
-                .turningPenalty(1.0)
-                // --- THE EXPERIMENT VARIABLE ---
-                .safetyMargin(0.0001)    // 11 Meters (Cautious)
-                .build());
-
-        // RACER 1: THE VETERAN (Pro)
-        // Strategy: Confident. Passes within inches of the barriers.
-        // Result: Takes the shortest possible physical line through the corner.
-        racers.add(RacerProfile.builder()
-                .name("The Veteran (Pro)")
-                .color("#00FF00") // Green
-                .strategy(SearchStrategy.ASTAR)
-                .heuristicType(HeuristicType.EUCLIDEAN)
-                .moveDistance(0.00015)
-                .flightAngles(COARSE_STEERING) // Fine steering (32) is best if available
-                // --- PHYSICS CONFIG (Standard) ---
-                .baseSpeed(0.00025)       // Standard fast speed
-                .dragFactor(0.01)         // Standard drag
-                .turningPenalty(1.0)      // Standard penalty
-                // --- THE EXPERIMENT VARIABLE ---
-                .safetyMargin(0.00001)    // 1.1 Meters (Aggressive)
-                .build());
+//        // RACER 2: THE ROOKIE (Scared)
+//        // Strategy: Nervous. Stays well clear of any walls.
+//        // Result: Forced to take a wider radius, increasing total path distance.
+//        racers.add(RacerProfile.builder()
+//                .name("The Rookie (Safe)")
+//                .color("#FFA500") // Orange
+//                .strategy(SearchStrategy.ASTAR)
+//                .heuristicType(HeuristicType.EUCLIDEAN)
+//                .moveDistance(BASE_MOVE)
+//                .flightAngles(COARSE_STEERING)
+//                // --- PHYSICS CONFIG (Identical to Pro) ---
+//                .baseSpeed(0.0004)
+//                .dragFactor(0.01)
+//                .turningPenalty(1.0)
+//                // --- THE EXPERIMENT VARIABLE ---
+//                .safetyMargin(0.0001)    // 11 Meters (Cautious)
+//                .build());
+//
+//        // RACER 1: THE VETERAN (Pro)
+//        // Strategy: Confident. Passes within inches of the barriers.
+//        // Result: Takes the shortest possible physical line through the corner.
+//        racers.add(RacerProfile.builder()
+//                .name("The Veteran (Pro)")
+//                .color("#00FF00") // Green
+//                .strategy(SearchStrategy.ASTAR)
+//                .heuristicType(HeuristicType.EUCLIDEAN)
+//                .moveDistance(BASE_MOVE)
+//                .flightAngles(COARSE_STEERING) // Fine steering (32) is best if available
+//                // --- PHYSICS CONFIG (Standard) ---
+//                .baseSpeed(0.0004)       // Standard fast speed
+//                .dragFactor(0.01)         // Standard drag
+//                .turningPenalty(1.0)      // Standard penalty
+//                // --- THE EXPERIMENT VARIABLE ---
+//                .safetyMargin(0.00001)    // 1.1 Meters (Aggressive)
+//                .build());
 
 
 //        // simulate a car that is very fast on the straights but struggles in corners due to extra weight
@@ -301,7 +301,6 @@ public class RacerService {
 
         for (RacerProfile racer : racers) {
             logger.info("Simulating Race Strategy for: {}", racer.getName());
-            // Note: runRacer method might need updating if you pass new profile parameters manually,
             // but since they are inside the 'profile' object, this call remains clean.
             DroneRaceResult result = runRacer(start, end, trackObstacles, racer);
             results.add(result);
