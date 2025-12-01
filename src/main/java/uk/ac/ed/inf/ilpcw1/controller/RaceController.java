@@ -22,7 +22,7 @@ public class RaceController {
 
 
     private final GeoJsonMapper geoJsonMapper;
-    private static final Logger logger = LoggerFactory.getLogger(DroneQueryService.class);
+    private static final Logger logger = LoggerFactory.getLogger(RaceController.class);
     private final TrackGenerationService trackGenerationService;
     private final RacerService racerService;
 

@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class TrackGenerationService {
-    private static final Logger logger = LoggerFactory.getLogger(DroneQueryService.class);
+    private static final Logger logger = LoggerFactory.getLogger(TrackGenerationService.class);
 
 
     /**
@@ -55,7 +55,7 @@ public class TrackGenerationService {
                     // 3. Parse the file content into GeoJsonPolygon
                     GeoJsonPolygon trackPoly = mapper.readValue(resource.getInputStream(), GeoJsonPolygon.class);
 
-                    logger.info("Parsed track file: {} as {}", filename, trackPoly);
+//                    logger.info("Parsed track file: {} as {}", filename, trackPoly);
 
                     // 4. Add to map
                     tracks.put(trackName, trackPoly);
@@ -149,7 +149,7 @@ public class TrackGenerationService {
     }
 
     public GeoJsonLineString convertToGeoJson(List<LngLat> vertices) {
-        logger.info("vertices: {}", vertices);
+//        logger.info("vertices: {}", vertices);
 
         List<List<Double>> coordinates = vertices.stream()
                 .map(p -> List.of(p.getLongitude(), p.getLatitude()))

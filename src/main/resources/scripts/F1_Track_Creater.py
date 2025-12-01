@@ -123,8 +123,13 @@ def convert_centerline_to_track(output_path=None, scale_factor=1.0, buffer_radiu
         raise RuntimeError("No LineString feature found to convert.")
 
     # Save File
-    output_dir = r"C:\Users\alasd\OneDrive\Desktop\1. University\Third Year\Informatics Large Practical\CW3\Drone-Grand-Prix-ILP-CW3\src\main\resources\tracks"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Go up two levels from 'scripts' to 'resources', then into 'tracks'
+    output_dir = os.path.join(current_dir, "..", "tracks")
+
+    # Ensure the directory exists
     os.makedirs(output_dir, exist_ok=True)
+
     output_path = os.path.join(output_dir, f"{track_name}.json")
 
     with open(output_path, 'w', encoding='utf-8') as f:

@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.ac.ed.inf.ilpcw1.data.*;
-import uk.ac.ed.inf.ilpcw1.service.DroneQueryService;
 import uk.ac.ed.inf.ilpcw1.service.RestService;
 import uk.ac.ed.inf.ilpcw1.service.ValidationService;
 
@@ -18,13 +17,11 @@ public class RestServiceController {
 
     private final RestService restService;
     private final ValidationService validationService;
-    private final DroneQueryService droneQueryService;
 
     @Autowired
-    public RestServiceController(RestService restService, ValidationService validationService, DroneQueryService droneQueryService) {
+    public RestServiceController(RestService restService, ValidationService validationService) {
         this.restService = restService;
         this.validationService = validationService;
-        this.droneQueryService = droneQueryService;
     }
 
     @GetMapping("/uid")
@@ -91,102 +88,69 @@ public class RestServiceController {
     }
 
 //    ============================= CW2 ENDPOINTS ========================================
-
-    /**
-     * Get drones which support or don't support cooling
-     * @param state true for drones with cooling - false for drones that don't
-     * @return List of drone ID's
-     */
-    @GetMapping("/dronesWithCooling/{state}")
-    public ResponseEntity<List<String>> getDronesWithCooling(@PathVariable boolean state) {
-        validationService.validateCoolingState(state);
-        List<String> droneIds = droneQueryService.filterByCooling(state);
-        return ResponseEntity.ok(droneIds);
-    }
-
-    /**
-     * Get details of single specific drone
-     * @param id the DroneID
-     * @return The drone object
-     * @throws uk.ac.ed.inf.ilpcw1.exception.DroneNotFoundException if dront not found (404)
-     */
-    @GetMapping("/droneDetails/{id}")
-    public ResponseEntity<Drone> getDroneDetails(@PathVariable String id) {
-        validationService.validateDroneId(id);
-        Drone drone = droneQueryService.getByDroneId(id);
-        return ResponseEntity.ok(drone);
-    }
-
-    /**
-     * 3 Query drones by a single attribute via GET path variables.
-     * @param attributeName The attribute to check (e.g., "id", "capacity").
-     * @param attributeValue The value to match (e.g., "4", "8").
-     * @return A list of matching drone IDs.
-     */
-    @GetMapping("/queryAsPath/{attribute-name}/{attribute-value}")
-    public ResponseEntity<List<String>> queryDronesByPath(
-            @PathVariable("attribute-name") String attributeName,
-            @PathVariable("attribute-value") String attributeValue) {
-
-        List<String> droneIds = droneQueryService.queryByAttribute(attributeName, attributeValue);
-        return ResponseEntity.ok(droneIds);
-    }
-
-
-    /**
-     * 4 Query drones by multiple attributes via POST request body.
-     * @param queries - The list of query requests containing attribute names and values.
-     * @return - A list of matching drone IDs.
-     */
-    @PostMapping("/query")
-    public ResponseEntity<List<String>> queryDrones(@RequestBody List<DroneQueryRequest> queries) {
-
-        List<String> droneIds = droneQueryService.queryDrones(queries);
-        return ResponseEntity.ok(droneIds);
-    }
-
-    /**
-     * 4 Query available drones for a list of medical dispatch records.
-     * @param medDispatchRec - The list of medical dispatch records.
-     * @return - The list of available drone IDs.
-     */
-    @PostMapping("/queryAvailableDrones")
-    public ResponseEntity<List<String>> queryAvailableDrones(@RequestBody List<MedDispatchRec> medDispatchRec) {
-
-        List<String> availableDroneIds = droneQueryService.queryAvailableDrones(medDispatchRec);
-        return ResponseEntity.ok(availableDroneIds);
-    }
-
-    /**
-     * 5 Calculate delivery paths for a list of medical dispatch records.
-     * @param medDispatchRecs - The list of medical dispatch records.
-     * @return - The delivery path response containing total cost, total moves, and drone paths.
-     */
-    @PostMapping("/calcDeliveryPath")
-    public ResponseEntity<DeliveryPathResponse> calculateDeliveryPath(@RequestBody List<MedDispatchRec> medDispatchRecs) {
-
-        DeliveryPathResponse response = droneQueryService.calcDeliveryPath(medDispatchRecs);
-        return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/calcDeliveryPathAsGeoJson")
-    public ResponseEntity<GeoJsonLineString> calculateDeliveryPathAsGeo(@RequestBody List<MedDispatchRec> medDispatchRecs) {
-        // Validate request body
-        if (medDispatchRecs == null || medDispatchRecs.isEmpty()) {
-            throw new uk.ac.ed.inf.ilpcw1.exception.InvalidRequestException("Dispatch list cannot be empty");
-        }
-
-        GeoJsonLineString response = droneQueryService.calcDeliveryPathAsGeoJson(medDispatchRecs);
-        return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/calcMultipleDeliveryPathAsGeoJson")
-    public ResponseEntity<Map<String, Object>> calcMultipleDeliveryPathAsGeoJson(@RequestBody List<MedDispatchRec> medDispatchRecs) {
-        if (medDispatchRecs == null || medDispatchRecs.isEmpty()) {
-            throw new uk.ac.ed.inf.ilpcw1.exception.InvalidRequestException("Dispatch list cannot be empty");
-        }
-        // Return raw Map which Spring will serialize to JSON automatically
-        return ResponseEntity.ok(droneQueryService.calcMultipleFlightPathsAsGeoJson(medDispatchRecs));
-    }
-
+//
+//    /**
+//     * Get drones which support or don't support cooling
+//     * @param state true for drones with cooling - false for drones that don't
+//     * @return List of drone ID's
+//     */
+//    @GetMapping("/dronesWithCooling/{state}")
+//    public ResponseEntity<List<String>> getDronesWithCooling(@PathVariable boolean state) {
+//        validationService.validateCoolingState(state);
+//        List<String> droneIds = droneQueryService.filterByCooling(state);
+//        return ResponseEntity.ok(droneIds);
+//    }
+//
+//    /**
+//     * Get details of single specific drone
+//     * @param id the DroneID
+//     * @return The drone object
+//     * @throws uk.ac.ed.inf.ilpcw1.exception.DroneNotFoundException if dront not found (404)
+//     */
+//    @GetMapping("/droneDetails/{id}")
+//    public ResponseEntity<Drone> getDroneDetails(@PathVariable String id) {
+//        validationService.validateDroneId(id);
+//        Drone drone = droneQueryService.getByDroneId(id);
+//        return ResponseEntity.ok(drone);
+//    }
+//
+//    /**
+//     * 3 Query drones by a single attribute via GET path variables.
+//     * @param attributeName The attribute to check (e.g., "id", "capacity").
+//     * @param attributeValue The value to match (e.g., "4", "8").
+//     * @return A list of matching drone IDs.
+//     */
+//    @GetMapping("/queryAsPath/{attribute-name}/{attribute-value}")
+//    public ResponseEntity<List<String>> queryDronesByPath(
+//            @PathVariable("attribute-name") String attributeName,
+//            @PathVariable("attribute-value") String attributeValue) {
+//
+//        List<String> droneIds = droneQueryService.queryByAttribute(attributeName, attributeValue);
+//        return ResponseEntity.ok(droneIds);
+//    }
+//
+//
+//    /**
+//     * 4 Query drones by multiple attributes via POST request body.
+//     * @param queries - The list of query requests containing attribute names and values.
+//     * @return - A list of matching drone IDs.
+//     */
+//    @PostMapping("/query")
+//    public ResponseEntity<List<String>> queryDrones(@RequestBody List<DroneQueryRequest> queries) {
+//
+//        List<String> droneIds = droneQueryService.queryDrones(queries);
+//        return ResponseEntity.ok(droneIds);
+//    }
+//
+//    /**
+//     * 4 Query available drones for a list of medical dispatch records.
+//     * @param medDispatchRec - The list of medical dispatch records.
+//     * @return - The list of available drone IDs.
+//     */
+//    @PostMapping("/queryAvailableDrones")
+//    public ResponseEntity<List<String>> queryAvailableDrones(@RequestBody List<MedDispatchRec> medDispatchRec) {
+//
+//        List<String> availableDroneIds = droneQueryService.queryAvailableDrones(medDispatchRec);
+//        return ResponseEntity.ok(availableDroneIds);
+//    }
 }
